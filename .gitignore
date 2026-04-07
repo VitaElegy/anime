@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.db
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Covers cache
+covers/
+!covers/.gitkeep
+
+# OS
+Thumbs.db
+.DS_Store
+
+# CodeBuddy
+.codebuddy/
