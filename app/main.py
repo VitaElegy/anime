@@ -1,0 +1,82 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
+
+from app.config import settings
+from app.routers import anilist as anilist_router, cover_resolve, crawl, download, favorites, image_proxy, metadata, schedule, search
+from app.services import database as db
+from app.services.qbittorrent import qb_service
+
+logger = logging.getLogger("anime-downloader")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup / shutdown lifecycle."""
+    # Ensure cache dirs exist
+    settings.DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    settings.COVER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Init SQLite
+    db.init_db()
+
+    # Connect to qBittorrent — non-blocking with timeout
+    try:
+        await asyncio.wait_for(asyncio.to_thread(qb_service.connect), timeout=5)
+        logger.info("Connected to qBittorrent at %s", settings.qb_url)
+    except Exception as e:
+        logger.warning("qBittorrent not available: %s (download features disabled)", e)
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down")
+
+
+app = FastAPI(
+    title="Anime Download Manager",
+    description="Search anime torrents from Nyaa / SubsPlease, download via qBittorrent, fetch metadata from Bangumi.",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# CORS — allow all origins for local dev
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Routers
+app.include_router(search.router, prefix="/api/search", tags=["Search"])
+app.include_router(download.router, prefix="/api/download", tags=["Download"])
+app.include_router(metadata.router, prefix="/api/metadata", tags=["Metadata"])
+app.include_router(favorites.router, prefix="/api/favorites", tags=["Favorites"])
+app.include_router(crawl.router, prefix="/api/crawl", tags=["Crawl"])
+app.include_router(schedule.router, prefix="/api/schedule", tags=["Schedule"])
+app.include_router(image_proxy.router, prefix="/api/image", tags=["Image"])
+app.include_router(cover_resolve.router, prefix="/api/covers", tags=["Covers"])
+app.include_router(anilist_router.router, prefix="/api/anilist", tags=["AniList"])
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled error: %s", exc, exc_info=True)
+    return JSONResponse(status_code=500, content={"detail": str(exc), "code": "internal_error"})
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "qb_connected": qb_service.is_connected}
