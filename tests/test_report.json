@@ -1,0 +1,436 @@
+{
+  "timestamp": "2026-04-08 19:26:27",
+  "target": "http://localhost:8000",
+  "summary": {
+    "passed": 53,
+    "failed": 0,
+    "skipped": 0,
+    "total": 53
+  },
+  "results": [
+    {
+      "id": "SYS-01",
+      "name": "健康检查",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 15,
+      "detail": ""
+    },
+    {
+      "id": "SYS-02",
+      "name": "根路径重定向",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "S-04",
+      "name": "Nyaa 空关键词 → 422",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "S-05",
+      "name": "Nyaa page=0 → 422",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "S-07",
+      "name": "SubsPlease 空关键词返回全部",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 1014,
+      "detail": ""
+    },
+    {
+      "id": "S-08",
+      "name": "SubsPlease 画质 720",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 828,
+      "detail": ""
+    },
+    {
+      "id": "S-09",
+      "name": "DMHY 中文搜索",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 640,
+      "detail": ""
+    },
+    {
+      "id": "S-10",
+      "name": "DMHY 分页",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 1077,
+      "detail": ""
+    },
+    {
+      "id": "S-11",
+      "name": "DMHY 分类参数",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 797,
+      "detail": ""
+    },
+    {
+      "id": "S-12",
+      "name": "Mikan 空搜索返回当季",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 9750,
+      "detail": ""
+    },
+    {
+      "id": "S-13",
+      "name": "Mikan 中文搜索",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 11280,
+      "detail": ""
+    },
+    {
+      "id": "S-14",
+      "name": "AnimeTosho 英文搜索",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 735,
+      "detail": ""
+    },
+    {
+      "id": "S-16",
+      "name": "聚合搜索 /all 5源",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 9889,
+      "detail": ""
+    },
+    {
+      "id": "S-17",
+      "name": "搜索结果结构验证",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 953,
+      "detail": ""
+    },
+    {
+      "id": "D-01",
+      "name": "qBittorrent 连接状态检查",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "D-04",
+      "name": "添加下载空参数",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "M-01",
+      "name": "Bangumi 中文搜索",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 281,
+      "detail": ""
+    },
+    {
+      "id": "M-02",
+      "name": "limit 参数",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 468,
+      "detail": ""
+    },
+    {
+      "id": "M-03",
+      "name": "limit 超范围 → 422",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "M-05",
+      "name": "获取不存在的番剧 → 404",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 515,
+      "detail": ""
+    },
+    {
+      "id": "M-07",
+      "name": "获取不存在的封面 → 404",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 500,
+      "detail": ""
+    },
+    {
+      "id": "F-01",
+      "name": "空收藏列表",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 15,
+      "detail": ""
+    },
+    {
+      "id": "F-02",
+      "name": "添加收藏",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 156,
+      "detail": ""
+    },
+    {
+      "id": "F-03",
+      "name": "重复添加 (覆盖)",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 93,
+      "detail": ""
+    },
+    {
+      "id": "F-04",
+      "name": "获取收藏列表",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 14,
+      "detail": ""
+    },
+    {
+      "id": "F-05",
+      "name": "按状态过滤",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "F-06",
+      "name": "无效状态过滤",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "F-07",
+      "name": "更新收藏状态",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 125,
+      "detail": ""
+    },
+    {
+      "id": "F-08",
+      "name": "更新不存在的收藏 → 404",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "F-09",
+      "name": "删除收藏",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 93,
+      "detail": ""
+    },
+    {
+      "id": "F-10",
+      "name": "删除不存在的收藏 → 404",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 14,
+      "detail": ""
+    },
+    {
+      "id": "C-07",
+      "name": "SSE 事件格式验证",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 1406,
+      "detail": ""
+    },
+    {
+      "id": "C-08",
+      "name": "抓取历史查询",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "SC-01",
+      "name": "获取每周放送表",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 906,
+      "detail": ""
+    },
+    {
+      "id": "I-01",
+      "name": "代理有效图片",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 15,
+      "detail": ""
+    },
+    {
+      "id": "I-02",
+      "name": "代理无效 URL → 502",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 63,
+      "detail": ""
+    },
+    {
+      "id": "I-03",
+      "name": "缓存命中 (X-Cache: HIT)",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 14,
+      "detail": ""
+    },
+    {
+      "id": "I-05",
+      "name": "批量预取",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "CV-01",
+      "name": "批量解析种子标题",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "CV-04",
+      "name": "空标题列表",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "CV-08",
+      "name": "清洗标题正确性",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 15,
+      "detail": ""
+    },
+    {
+      "id": "AL-01",
+      "name": "英文搜索",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 734,
+      "detail": ""
+    },
+    {
+      "id": "AL-03",
+      "name": "当季热门",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 500,
+      "detail": ""
+    },
+    {
+      "id": "AL-04",
+      "name": "放送时间表",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 297,
+      "detail": ""
+    },
+    {
+      "id": "AL-05",
+      "name": "limit=0 → 422",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "W-01",
+      "name": "创建房间",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "W-02",
+      "name": "列出房间",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "W-03",
+      "name": "获取房间详情",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 15,
+      "detail": ""
+    },
+    {
+      "id": "W-04",
+      "name": "获取不存在的房间 → 404",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "W-05",
+      "name": "删除房间",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "W-06",
+      "name": "WebSocket 连接 + init",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 2077,
+      "detail": ""
+    },
+    {
+      "id": "W-07",
+      "name": "WebSocket 聊天消息",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 2047,
+      "detail": ""
+    },
+    {
+      "id": "W-11",
+      "name": "WebSocket 连接不存在的房间",
+      "passed": true,
+      "skipped": false,
+      "duration_ms": 2030,
+      "detail": ""
+    }
+  ]
+}
