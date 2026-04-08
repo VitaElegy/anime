@@ -6,6 +6,7 @@ import {
   Library,
   Calendar,
   Terminal,
+  Tv,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -18,6 +19,7 @@ const navItems = [
   { to: '/library', icon: Library, label: '番剧库' },
   { to: '/calendar', icon: Calendar, label: '新番日历' },
   { to: '/crawl', icon: Terminal, label: '抓取控制台' },
+  { to: '/watchparty', icon: Tv, label: '放映室' },
 ]
 
 interface SidebarProps {

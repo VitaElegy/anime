@@ -9,6 +9,7 @@ const DownloadsPage = lazy(() => import('./pages/DownloadsPage'))
 const LibraryPage = lazy(() => import('./pages/LibraryPage'))
 const CalendarPage = lazy(() => import('./pages/CalendarPage'))
 const CrawlPage = lazy(() => import('./pages/CrawlPage'))
+const WatchPartyPage = lazy(() => import('./pages/WatchPartyPage'))
 
 function PageLoader() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/crawl" element={<CrawlPage />} />
+          <Route path="/watchparty" element={<WatchPartyPage />} />
         </Route>
       </Routes>
     </Suspense>

@@ -13,6 +13,10 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      '/api/watchparty/ws': {
+        target: 'ws://localhost:8000',
+        ws: true,
+      },
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,

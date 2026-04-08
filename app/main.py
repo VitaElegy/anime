@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.config import settings
-from app.routers import anilist as anilist_router, cover_resolve, crawl, download, favorites, image_proxy, metadata, schedule, search
+from app.routers import anilist as anilist_router, cover_resolve, crawl, download, favorites, image_proxy, metadata, schedule, search, watchparty
 from app.services import database as db
 from app.services.qbittorrent import qb_service
 
@@ -64,6 +64,7 @@ app.include_router(schedule.router, prefix="/api/schedule", tags=["Schedule"])
 app.include_router(image_proxy.router, prefix="/api/image", tags=["Image"])
 app.include_router(cover_resolve.router, prefix="/api/covers", tags=["Covers"])
 app.include_router(anilist_router.router, prefix="/api/anilist", tags=["AniList"])
+app.include_router(watchparty.router, prefix="/api/watchparty", tags=["WatchParty"])
 
 
 @app.exception_handler(Exception)
