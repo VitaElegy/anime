@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.services import bangumi
+from app.services import anilist
 from app.services import database as db
 
 logger = logging.getLogger(__name__)
@@ -134,13 +135,24 @@ async def batch_resolve_covers(req: CoverRequest):
     for raw, cleaned, h in title_info:
         if h in cached:
             row = cached[h]
-            if row["cover_url"]:
+            if row["cover_url"] or row["name_cn"] or row["name"]:
+                # Return result even without cover — Chinese name is still useful
                 results.append(CoverResult(
                     title=raw, title_hash=h,
                     cover_url=row["cover_url"], bangumi_id=row["bangumi_id"],
                     name_cn=row["name_cn"], name=row["name"],
                 ))
-            # Even empty cover_url means "resolved but not found" — skip re-search
+            # Empty record with no name and no cover — allow re-resolve after 7 days
+            elif row.get("bangumi_id", 0) == 0:
+                created_at = row.get("created_at", "")
+                if created_at:
+                    from datetime import datetime, timedelta, timezone
+                    try:
+                        ts = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                        if datetime.now(timezone.utc) - ts > timedelta(days=7):
+                            to_resolve.append((raw, cleaned, h))
+                    except Exception:
+                        pass
         else:
             to_resolve.append((raw, cleaned, h))
 
@@ -153,20 +165,31 @@ async def batch_resolve_covers(req: CoverRequest):
             try:
                 search_results = await bangumi.search(variant, limit=3)
                 if search_results:
+                    # Priority: 1) has cover+name_cn, 2) has cover, 3) has name_cn, 4) first result
                     best = None
                     for sr in search_results:
-                        if sr.cover_url:
+                        if sr.cover_url and sr.name_cn:
                             best = sr
                             break
-                    if not best and search_results[0].cover_url:
+                    if not best:
+                        for sr in search_results:
+                            if sr.cover_url:
+                                best = sr
+                                break
+                    if not best:
+                        for sr in search_results:
+                            if sr.name_cn:
+                                best = sr
+                                break
+                    if not best:
                         best = search_results[0]
 
-                    if best and best.cover_url:
+                    if best:
                         # Persist to SQLite — never search again
                         db.upsert_title_cover(h, cleaned, best.id, best.name_cn, best.name, best.cover_url)
                         results.append(CoverResult(
                             title=raw, title_hash=h,
-                            cover_url=best.cover_url, bangumi_id=best.id,
+                            cover_url=best.cover_url or "", bangumi_id=best.id,
                             name_cn=best.name_cn, name=best.name,
                         ))
                         found = True
@@ -174,6 +197,58 @@ async def batch_resolve_covers(req: CoverRequest):
                         break
             except Exception as e:
                 logger.warning("Cover search failed for '%s': %s", variant, e)
+
+        if not found:
+            # Fallback: use AniList (supports romaji) to find Japanese/native title,
+            # then re-search Bangumi with the native title
+            try:
+                al_result = await anilist._do_search(cleaned, page=1, per_page=3)
+                for al_item in al_result.get("items", []):
+                    native_title = al_item.get("title_native", "")
+                    romaji_title = al_item.get("title_romaji", "")
+                    al_cover = al_item.get("cover_large", "") or al_item.get("cover_medium", "")
+
+                    # Try Bangumi with native (Japanese) title
+                    for try_title in [native_title, romaji_title]:
+                        if not try_title:
+                            continue
+                        try:
+                            bgm_results = await bangumi.search(try_title, limit=3)
+                            if bgm_results:
+                                best = bgm_results[0]
+                                for sr in bgm_results:
+                                    if sr.cover_url and sr.name_cn:
+                                        best = sr
+                                        break
+                                db.upsert_title_cover(h, cleaned, best.id, best.name_cn, best.name, best.cover_url or al_cover)
+                                results.append(CoverResult(
+                                    title=raw, title_hash=h,
+                                    cover_url=best.cover_url or al_cover, bangumi_id=best.id,
+                                    name_cn=best.name_cn, name=best.name,
+                                ))
+                                found = True
+                                logger.info("Cover resolved via AniList fallback: '%s' -> %s (bgm:%d)", cleaned, best.name_cn or best.name, best.id)
+                                break
+                        except Exception:
+                            pass
+                    if found:
+                        break
+
+                    # If Bangumi still fails, use AniList data directly
+                    if not found and (native_title or al_cover):
+                        name_cn = al_item.get("title_english", "") or native_title
+                        name = native_title or romaji_title
+                        db.upsert_title_cover(h, cleaned, 0, name_cn, name, al_cover)
+                        results.append(CoverResult(
+                            title=raw, title_hash=h,
+                            cover_url=al_cover, bangumi_id=0,
+                            name_cn=name_cn, name=name,
+                        ))
+                        found = True
+                        logger.info("Cover resolved via AniList only: '%s' -> %s", cleaned, name_cn or name)
+                        break
+            except Exception as e:
+                logger.warning("AniList fallback failed for '%s': %s", cleaned, e)
 
         if not found:
             # Persist miss — won't search again (can be manually updated)

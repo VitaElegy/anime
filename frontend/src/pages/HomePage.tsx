@@ -45,9 +45,7 @@ export default function HomePage() {
             const covers = await batchResolveCovers(items.map(i => i.title))
             const map: Record<string, CoverInfo> = {}
             for (const c of covers) {
-              if (c.cover_url) {
-                map[c.title] = { cover_url: c.cover_url, name_cn: c.name_cn, name: c.name }
-              }
+              map[c.title] = { cover_url: c.cover_url || '', name_cn: c.name_cn || '', name: c.name || '' }
             }
             setCoverMap(map)
           } catch { /* best effort */ }
@@ -110,7 +108,7 @@ export default function HomePage() {
                   <div className="poster-card card-hover border border-border relative bg-bg-card">
                     {info?.cover_url ? (
                       <img src={proxyImageUrl(info.cover_url)} alt={displayName} loading="lazy" className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                        onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect fill="%231a1a2e" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>' }} />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-bg-card to-bg-secondary">
                         <span className="text-3xl font-bold text-border">{displayName.charAt(0)}</span>

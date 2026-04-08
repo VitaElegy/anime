@@ -19,7 +19,16 @@ CACHE_DIR = settings.COVER_CACHE_DIR / "proxy_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 _client: httpx.AsyncClient | None = None
-_lock = asyncio.Lock()
+_locks: dict[str, asyncio.Lock] = {}
+_locks_lock = asyncio.Lock()
+
+
+async def _get_url_lock(url: str) -> asyncio.Lock:
+    """Per-URL lock to allow parallel downloads of different images."""
+    async with _locks_lock:
+        if url not in _locks:
+            _locks[url] = asyncio.Lock()
+        return _locks[url]
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -27,7 +36,10 @@ def _get_client() -> httpx.AsyncClient:
     if _client is None or _client.is_closed:
         _client = httpx.AsyncClient(
             timeout=20,
-            headers={"User-Agent": "NicoTracker/1.0"},
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "Referer": "https://bgm.tv/",
+            },
             follow_redirects=True,
         )
     return _client
@@ -65,30 +77,35 @@ async def proxy_image(url: str = Query(..., description="External image URL to p
 
     cache_path = _url_to_cache_path(url)
 
-    # Cache hit — serve immediately
-    if cache_path.exists() and cache_path.stat().st_size > 0:
-        return FileResponse(
-            cache_path,
-            media_type=_content_type(cache_path),
-            headers={"X-Cache": "HIT", "Cache-Control": "public, max-age=86400"},
-        )
-
-    # Cache miss — download
-    async with _lock:
-        # Double-check after acquiring lock
-        if cache_path.exists() and cache_path.stat().st_size > 0:
+    # Cache hit — serve immediately (check all possible extensions)
+    for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+        alt = cache_path.with_suffix(ext)
+        if alt.exists() and alt.stat().st_size > 0:
             return FileResponse(
-                cache_path,
-                media_type=_content_type(cache_path),
+                alt,
+                media_type=_content_type(alt),
                 headers={"X-Cache": "HIT", "Cache-Control": "public, max-age=86400"},
             )
+
+    # Cache miss — download with per-URL lock
+    url_lock = await _get_url_lock(url)
+    async with url_lock:
+        # Double-check after acquiring lock (also check alternate extensions)
+        for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+            alt = cache_path.with_suffix(ext)
+            if alt.exists() and alt.stat().st_size > 0:
+                return FileResponse(
+                    alt,
+                    media_type=_content_type(alt),
+                    headers={"X-Cache": "HIT", "Cache-Control": "public, max-age=86400"},
+                )
 
         client = _get_client()
         try:
             resp = await client.get(url)
             resp.raise_for_status()
 
-            # Determine actual extension from content-type
+            # Determine actual extension from content-type and save with correct suffix
             ct = resp.headers.get("content-type", "image/jpeg")
             if "png" in ct:
                 actual_path = cache_path.with_suffix(".png")
@@ -97,7 +114,7 @@ async def proxy_image(url: str = Query(..., description="External image URL to p
             elif "gif" in ct:
                 actual_path = cache_path.with_suffix(".gif")
             else:
-                actual_path = cache_path
+                actual_path = cache_path.with_suffix(".jpg")
 
             actual_path.write_bytes(resp.content)
             logger.info("Cached image: %s -> %s (%d bytes)", url[:80], actual_path.name, len(resp.content))
