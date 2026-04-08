@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Search, Download, ExternalLink, Loader2, ArrowUpDown, CheckCircle2, XCircle, Star, Globe, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { searchNyaa, searchSubsPlease, addDownload, anilistSearch, proxyImageUrl } from '@/api'
+import { searchNyaa, searchSubsPlease, searchDmhy, searchMikan, searchAnimeTosho, addDownload, anilistSearch, proxyImageUrl } from '@/api'
 import type { TorrentItem, SearchResult } from '@/types'
 import type { AniListAnime } from '@/api'
 
@@ -34,10 +34,15 @@ export default function SearchPage() {
         const result = await anilistSearch(q, 1, 24)
         setAnilistResults(result.items)
       } else {
-        const [nyaa, sp] = await Promise.allSettled([searchNyaa(q), searchSubsPlease(q)])
+        const [nyaa, sp, dmhyR, mikanR, toshoR] = await Promise.allSettled([
+          searchNyaa(q), searchSubsPlease(q), searchDmhy(q), searchMikan(q), searchAnimeTosho(q)
+        ])
         const items: TorrentItem[] = []
         if (nyaa.status === 'fulfilled') items.push(...nyaa.value.items)
         if (sp.status === 'fulfilled') items.push(...sp.value.items)
+        if (dmhyR.status === 'fulfilled') items.push(...dmhyR.value.items)
+        if (mikanR.status === 'fulfilled') items.push(...mikanR.value.items)
+        if (toshoR.status === 'fulfilled') items.push(...toshoR.value.items)
         setTorrentResults(items)
       }
     } catch { /* silent */ } finally { setLoading(false) }
@@ -119,7 +124,7 @@ export default function SearchPage() {
           <button onClick={() => handleModeSwitch('torrent')}
             className={cn('flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
               mode === 'torrent' ? 'bg-accent-primary text-white' : 'bg-bg-card text-text-muted hover:text-text-secondary')}>
-            <Zap className="h-3.5 w-3.5" /> 种子搜索 (Nyaa + SubsPlease)
+            <Zap className="h-3.5 w-3.5" /> 种子搜索 (5源聚合)
           </button>
         </div>
         <div className="flex items-center gap-2 text-[10px]">
@@ -127,8 +132,11 @@ export default function SearchPage() {
             <span className="px-2 py-0.5 rounded-full bg-accent-secondary/10 text-accent-secondary font-medium">AniList GraphQL · 原生中文搜索</span>
           ) : (
             <>
-              <span className="px-2 py-0.5 rounded-full bg-accent-cyan/10 text-accent-cyan font-medium">Nyaa.land</span>
+              <span className="px-2 py-0.5 rounded-full bg-accent-cyan/10 text-accent-cyan font-medium">Nyaa</span>
               <span className="px-2 py-0.5 rounded-full bg-accent-secondary/10 text-accent-secondary font-medium">SubsPlease</span>
+              <span className="px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary font-medium">动漫花园</span>
+              <span className="px-2 py-0.5 rounded-full bg-accent-gold/10 text-accent-gold font-medium">蜜柑计划</span>
+              <span className="px-2 py-0.5 rounded-full bg-success/10 text-success font-medium">AnimeTosho</span>
             </>
           )}
         </div>
@@ -193,7 +201,12 @@ export default function SearchPage() {
                   <p className="text-sm font-medium leading-snug mb-1.5">{item.title}</p>
                   <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
                     <span className={cn('rounded px-1.5 py-0.5 font-medium',
-                      item.source === 'nyaa' ? 'bg-accent-cyan/10 text-accent-cyan' : 'bg-accent-secondary/10 text-accent-secondary')}>
+                      item.source === 'nyaa' ? 'bg-accent-cyan/10 text-accent-cyan'
+                        : item.source === 'subsplease' ? 'bg-accent-secondary/10 text-accent-secondary'
+                        : item.source === 'dmhy' ? 'bg-accent-primary/10 text-accent-primary'
+                        : item.source === 'mikan' ? 'bg-accent-gold/10 text-accent-gold'
+                        : item.source === 'animetosho' ? 'bg-success/10 text-success'
+                        : 'bg-bg-card text-text-muted')}>
                       {item.source}
                     </span>
                     {item.size && <span>{item.size}</span>}

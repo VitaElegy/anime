@@ -22,6 +22,21 @@ export async function searchAll(q: string): Promise<SearchResult[]> {
   return data
 }
 
+export async function searchDmhy(q: string, page = 1, category = '2'): Promise<SearchResult> {
+  const { data } = await api.get('/search/dmhy', { params: { q, page, category } })
+  return data
+}
+
+export async function searchMikan(q = ''): Promise<SearchResult> {
+  const { data } = await api.get('/search/mikan', { params: { q } })
+  return data
+}
+
+export async function searchAnimeTosho(q: string, page = 1): Promise<SearchResult> {
+  const { data } = await api.get('/search/animetosho', { params: { q, page } })
+  return data
+}
+
 // Download
 export async function addDownload(req: DownloadRequest) {
   const { data } = await api.post('/download', req)

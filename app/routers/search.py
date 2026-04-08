@@ -1,4 +1,4 @@
-"""Search routes — Nyaa, SubsPlease, aggregated, with Chinese keyword support."""
+"""Search routes — Nyaa, SubsPlease, DMHY, Mikan, AnimeTosho, aggregated, with Chinese keyword support."""
 
 import asyncio
 import re
@@ -6,7 +6,7 @@ import re
 from fastapi import APIRouter, Query
 
 from app.models import SearchResult, TorrentItem
-from app.services import nyaa, subsplease, bangumi
+from app.services import nyaa, subsplease, bangumi, dmhy, mikan, animetosho
 from app.services import database as db
 
 router = APIRouter()
@@ -123,45 +123,92 @@ async def search_subsplease(
     return await subsplease.search(keyword=q, quality=quality)
 
 
-@router.get("/all", response_model=list[SearchResult], summary="Aggregated search across all sources")
-async def search_all(q: str = Query(..., description="Search keyword")):
+@router.get("/dmhy", response_model=SearchResult, summary="Search 动漫花园 (DMHY)")
+async def search_dmhy(
+    q: str = Query(..., description="Search keyword (supports Chinese)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    category: str = Query("2", description="Category: 2=动画, 31=完结动画, 3=漫画, 4=音乐"),
+):
+    """Search DMHY — the largest Chinese fansub BT resource site. Natively supports Chinese keywords."""
+    return await dmhy.search_html(q, page=page, category=category)
+
+
+@router.get("/mikan", response_model=SearchResult, summary="Search 蜜柑计划 (Mikan)")
+async def search_mikan(
+    q: str = Query("", description="Search keyword (supports Chinese)"),
+):
+    """Search Mikan RSS — Chinese anime subscription aggregator with fansub team info."""
+    if q:
+        return await mikan.search_rss(q)
+    return await mikan.get_current_season_rss()
+
+
+@router.get("/animetosho", response_model=SearchResult, summary="Search AnimeTosho")
+async def search_animetosho(
+    q: str = Query(..., description="Search keyword"),
+    page: int = Query(1, ge=1, description="Page number"),
+):
+    """Search AnimeTosho — aggregates torrents from Nyaa, TokyoTosho, AniDex, etc. Clean JSON API."""
     if _has_chinese(q) or _has_japanese(q):
         alts = await _translate_keyword(q)
         ascii_alts = [a for a in alts if not _has_chinese(a) and not _has_japanese(a)]
-        nyaa_q = ascii_alts[0] if ascii_alts else q
+        search_q = ascii_alts[0] if ascii_alts else q
+    else:
+        search_q = q
+    return await animetosho.search(search_q, page=page)
 
-        async def _search_nyaa():
-            try:
-                return await nyaa.search_html(nyaa_q)
-            except Exception:
-                return SearchResult(items=[], total=0, source="nyaa")
 
-        async def _search_sp():
+@router.get("/all", response_model=list[SearchResult], summary="Aggregated search across all sources")
+async def search_all(q: str = Query(..., description="Search keyword")):
+    """Search all 5 sources in parallel: Nyaa + SubsPlease + DMHY + Mikan + AnimeTosho."""
+    alts = []
+    if _has_chinese(q) or _has_japanese(q):
+        alts = await _translate_keyword(q)
+
+    ascii_alts = [a for a in alts if not _has_chinese(a) and not _has_japanese(a)] if alts else []
+    nyaa_q = ascii_alts[0] if ascii_alts else q
+    tosho_q = nyaa_q
+
+    async def _search_nyaa():
+        try:
+            return await nyaa.search_html(nyaa_q)
+        except Exception:
+            return SearchResult(items=[], total=0, source="nyaa")
+
+    async def _search_sp():
+        try:
+            terms = alts[:4] if alts else [q]
             items: list[TorrentItem] = []
             seen = set()
-            for alt in alts[:4]:
-                try:
-                    r = await subsplease.search(keyword=alt)
-                    for item in r.items:
-                        if item.title not in seen:
-                            seen.add(item.title)
-                            items.append(item)
-                except Exception:
-                    pass
+            for alt in terms:
+                r = await subsplease.search(keyword=alt)
+                for item in r.items:
+                    if item.title not in seen:
+                        seen.add(item.title)
+                        items.append(item)
             return SearchResult(items=items, total=len(items), source="subsplease")
+        except Exception:
+            return SearchResult(items=[], total=0, source="subsplease")
 
-        nyaa_result, sp_result = await asyncio.gather(_search_nyaa(), _search_sp())
-        return [nyaa_result, sp_result]
+    async def _search_dmhy():
+        try:
+            return await dmhy.search_html(q)
+        except Exception:
+            return SearchResult(items=[], total=0, source="dmhy")
 
-    nyaa_result, sp_result = await asyncio.gather(
-        nyaa.search_html(q),
-        subsplease.search(keyword=q),
-        return_exceptions=True,
+    async def _search_mikan():
+        try:
+            return await mikan.search_rss(q)
+        except Exception:
+            return SearchResult(items=[], total=0, source="mikan")
+
+    async def _search_tosho():
+        try:
+            return await animetosho.search(tosho_q)
+        except Exception:
+            return SearchResult(items=[], total=0, source="animetosho")
+
+    results = await asyncio.gather(
+        _search_nyaa(), _search_sp(), _search_dmhy(), _search_mikan(), _search_tosho()
     )
-    results = []
-    for r in (nyaa_result, sp_result):
-        if isinstance(r, Exception):
-            results.append(SearchResult(items=[], total=0, source="error"))
-        else:
-            results.append(r)
-    return results
+    return list(results)

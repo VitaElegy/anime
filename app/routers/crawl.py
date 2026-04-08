@@ -9,7 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
-from app.services import nyaa, subsplease, bangumi
+from app.services import nyaa, subsplease, bangumi, dmhy, mikan, animetosho
 from app.services import database as db
 
 logger = logging.getLogger(__name__)
@@ -114,12 +114,104 @@ async def _crawl_bangumi(keyword: str):
         db.add_crawl_record("bangumi", keyword, 0, elapsed, "error", str(e))
 
 
+async def _crawl_dmhy(keyword: str, page: int = 1):
+    display_kw = keyword if keyword else "(最新)"
+    yield await _sse_event({"ts": _now(), "level": "info", "source": "dmhy", "msg": f"开始抓取 动漫花园 [关键词={display_kw}, 页={page}]..."})
+
+    from urllib.parse import quote
+    url = f"https://share.dmhy.org/topics/list/page/{page}?keyword={quote(keyword)}&sort_id=2"
+    yield await _sse_event({"ts": _now(), "level": "info", "source": "dmhy", "msg": f"正在请求: {url}"})
+
+    t0 = time.monotonic()
+    try:
+        result = await dmhy.search_html(keyword, page=page)
+        elapsed = int((time.monotonic() - t0) * 1000)
+        yield await _sse_event({"ts": _now(), "level": "info", "source": "dmhy", "msg": f"响应成功 ({elapsed}ms)"})
+        yield await _sse_event({"ts": _now(), "level": "info", "source": "dmhy", "msg": f"解析到 {len(result.items)} 条种子..."})
+
+        for i, item in enumerate(result.items[:5]):
+            yield await _sse_event({"ts": _now(), "level": "info", "source": "dmhy", "msg": f"  [{i+1}] {item.title[:80]} ({item.size})"})
+            await asyncio.sleep(0.05)
+
+        if len(result.items) > 5:
+            yield await _sse_event({"ts": _now(), "level": "info", "source": "dmhy", "msg": f"  ... 及其余 {len(result.items)-5} 条"})
+
+        yield await _sse_event({"ts": _now(), "level": "success", "source": "dmhy", "msg": f"完成！共 {len(result.items)} 条 ({elapsed}ms)"})
+        db.add_crawl_record("dmhy", keyword, len(result.items), elapsed)
+    except Exception as e:
+        elapsed = int((time.monotonic() - t0) * 1000)
+        yield await _sse_event({"ts": _now(), "level": "error", "source": "dmhy", "msg": f"失败: {e}"})
+        db.add_crawl_record("dmhy", keyword, 0, elapsed, "error", str(e))
+
+
+async def _crawl_mikan(keyword: str):
+    display_kw = keyword if keyword else "(当季全部)"
+    yield await _sse_event({"ts": _now(), "level": "info", "source": "mikan", "msg": f"开始抓取 蜜柑计划 [关键词={display_kw}]..."})
+
+    url = f"https://mikanani.me/RSS/Search?searchstr={keyword}" if keyword else "https://mikanani.me/RSS/Classic"
+    yield await _sse_event({"ts": _now(), "level": "info", "source": "mikan", "msg": f"正在请求: {url}"})
+
+    t0 = time.monotonic()
+    try:
+        if keyword:
+            result = await mikan.search_rss(keyword)
+        else:
+            result = await mikan.get_current_season_rss()
+        elapsed = int((time.monotonic() - t0) * 1000)
+        yield await _sse_event({"ts": _now(), "level": "info", "source": "mikan", "msg": f"响应成功 ({elapsed}ms)"})
+        yield await _sse_event({"ts": _now(), "level": "info", "source": "mikan", "msg": f"解析到 {len(result.items)} 条数据..."})
+
+        for i, item in enumerate(result.items[:5]):
+            yield await _sse_event({"ts": _now(), "level": "info", "source": "mikan", "msg": f"  [{i+1}] {item.title[:80]}"})
+            await asyncio.sleep(0.05)
+
+        if len(result.items) > 5:
+            yield await _sse_event({"ts": _now(), "level": "info", "source": "mikan", "msg": f"  ... 及其余 {len(result.items)-5} 条"})
+
+        yield await _sse_event({"ts": _now(), "level": "success", "source": "mikan", "msg": f"完成！共 {len(result.items)} 条 ({elapsed}ms)"})
+        db.add_crawl_record("mikan", keyword, len(result.items), elapsed)
+    except Exception as e:
+        elapsed = int((time.monotonic() - t0) * 1000)
+        yield await _sse_event({"ts": _now(), "level": "error", "source": "mikan", "msg": f"失败: {e}"})
+        db.add_crawl_record("mikan", keyword, 0, elapsed, "error", str(e))
+
+
+async def _crawl_animetosho(keyword: str):
+    if not keyword:
+        keyword = "2026"
+    yield await _sse_event({"ts": _now(), "level": "info", "source": "animetosho", "msg": f"开始抓取 AnimeTosho [关键词={keyword}]..."})
+
+    url = f"https://feed.animetosho.org/json?q={keyword}"
+    yield await _sse_event({"ts": _now(), "level": "info", "source": "animetosho", "msg": f"正在请求: {url}"})
+
+    t0 = time.monotonic()
+    try:
+        result = await animetosho.search(keyword)
+        elapsed = int((time.monotonic() - t0) * 1000)
+        yield await _sse_event({"ts": _now(), "level": "info", "source": "animetosho", "msg": f"响应成功 ({elapsed}ms)"})
+        yield await _sse_event({"ts": _now(), "level": "info", "source": "animetosho", "msg": f"解析到 {len(result.items)} 条种子..."})
+
+        for i, item in enumerate(result.items[:5]):
+            yield await _sse_event({"ts": _now(), "level": "info", "source": "animetosho", "msg": f"  [{i+1}] {item.title[:80]} (S:{item.seeders} {item.size})"})
+            await asyncio.sleep(0.05)
+
+        if len(result.items) > 5:
+            yield await _sse_event({"ts": _now(), "level": "info", "source": "animetosho", "msg": f"  ... 及其余 {len(result.items)-5} 条"})
+
+        yield await _sse_event({"ts": _now(), "level": "success", "source": "animetosho", "msg": f"完成！共 {len(result.items)} 条 ({elapsed}ms)"})
+        db.add_crawl_record("animetosho", keyword, len(result.items), elapsed)
+    except Exception as e:
+        elapsed = int((time.monotonic() - t0) * 1000)
+        yield await _sse_event({"ts": _now(), "level": "error", "source": "animetosho", "msg": f"失败: {e}"})
+        db.add_crawl_record("animetosho", keyword, 0, elapsed, "error", str(e))
+
+
 @router.get("/stream", summary="SSE crawl stream")
 async def crawl_stream(
-    source: str = Query(..., description="Source: subsplease, nyaa, bangumi, all"),
+    source: str = Query(..., description="Source: subsplease, nyaa, bangumi, dmhy, mikan, animetosho, all"),
     keyword: str = Query("", description="Search keyword"),
     quality: int = Query(1080, description="SubsPlease quality"),
-    page: int = Query(1, ge=1, description="Page number (Nyaa only)"),
+    page: int = Query(1, ge=1, description="Page number (Nyaa/DMHY only)"),
 ):
     async def generate():
         yield await _sse_event({"ts": _now(), "level": "info", "source": "system", "msg": f"抓取任务启动 [source={source}, keyword={keyword or '(默认)'}, page={page}]"})
@@ -131,6 +223,12 @@ async def crawl_stream(
             sources_to_crawl.append("nyaa")
         if source in ("bangumi", "all"):
             sources_to_crawl.append("bangumi")
+        if source in ("dmhy", "all"):
+            sources_to_crawl.append("dmhy")
+        if source in ("mikan", "all"):
+            sources_to_crawl.append("mikan")
+        if source in ("animetosho", "all"):
+            sources_to_crawl.append("animetosho")
 
         for src in sources_to_crawl:
             if src == "subsplease":
@@ -141,6 +239,15 @@ async def crawl_stream(
                     yield event
             elif src == "bangumi":
                 async for event in _crawl_bangumi(keyword):
+                    yield event
+            elif src == "dmhy":
+                async for event in _crawl_dmhy(keyword, page):
+                    yield event
+            elif src == "mikan":
+                async for event in _crawl_mikan(keyword):
+                    yield event
+            elif src == "animetosho":
+                async for event in _crawl_animetosho(keyword):
                     yield event
 
         yield await _sse_event({"ts": _now(), "level": "success", "source": "system", "msg": "所有抓取任务完成"})

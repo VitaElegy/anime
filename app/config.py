@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     # SubsPlease
     SUBSPLEASE_RSS: str = "https://subsplease.org/rss/?r=1080"
 
+    # DMHY (动漫花园)
+    DMHY_BASE_URL: str = "https://share.dmhy.org"
+
+    # Mikan (蜜柑计划)
+    MIKAN_BASE_URL: str = "https://mikanani.me"
+
+    # AnimeTosho (种子聚合)
+    ANIMETOSHO_API: str = "https://feed.animetosho.org/json"
+
     # Paths
     DOWNLOAD_DIR: Path = Path("D:/downloads/anime")
     COVER_CACHE_DIR: Path = Path("D:/work/anime/covers")

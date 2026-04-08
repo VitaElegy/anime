@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { getCrawlHistory } from '@/api'
 import type { CrawlLogEntry } from '@/types'
 
-type CrawlSource = 'subsplease' | 'nyaa' | 'bangumi'
+type CrawlSource = 'subsplease' | 'nyaa' | 'bangumi' | 'dmhy' | 'mikan' | 'animetosho'
 
 interface SourceConfig {
   key: CrawlSource
@@ -25,6 +25,21 @@ const sources: SourceConfig[] = [
     key: 'nyaa', label: 'Nyaa.land', description: 'BT 种子索引',
     capabilities: ['HTML 搜索 + RSS 回退', '每页 75 条结果', '支持分页连续抓取', '含种子数/下载数/文件大小', '分类: 动画/英字/非英字/生肉'],
     pageSize: 75, maxPages: 10,
+  },
+  {
+    key: 'dmhy', label: '动漫花园', description: '中文字幕组 BT 资源',
+    capabilities: ['原生中文关键词搜索', 'HTML 爬取 + RSS 回退', '含字幕组标签', '支持分页抓取', '分类: 动画/完结/漫画/音乐'],
+    pageSize: 80, maxPages: 10,
+  },
+  {
+    key: 'mikan', label: '蜜柑计划', description: 'RSS 订阅追番',
+    capabilities: ['中文 RSS 订阅', '字幕组聚合', '当季新番列表', '支持中文搜索', '自动追番推荐'],
+    pageSize: 0, maxPages: 1,
+  },
+  {
+    key: 'animetosho', label: 'AnimeTosho', description: '种子聚合 JSON API',
+    capabilities: ['聚合 Nyaa/TokyoTosho/AniDex 等多源', '干净 JSON API', '含做种/下载数', '支持分页', '英文关键词搜索（自动翻译中文）'],
+    pageSize: 50, maxPages: 5,
   },
   {
     key: 'bangumi', label: 'Bangumi', description: '番剧元数据',
