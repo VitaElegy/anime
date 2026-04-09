@@ -88,6 +88,40 @@ export async function deleteTorrent(hash: string, deleteFiles = false) {
   return data
 }
 
+// Download Settings
+export async function getDownloadSettings(): Promise<{ download_dir: string; exists: boolean; free_space: number }> {
+  const { data } = await api.get('/download/settings')
+  return data
+}
+
+export async function updateDownloadSettings(download_dir: string) {
+  const { data } = await api.put('/download/settings', { download_dir })
+  return data
+}
+
+// File Browser
+export interface FileItem {
+  name: string
+  path: string
+  type: 'file' | 'dir'
+  size: number
+  modified: number
+  ext?: string
+  file_count?: number
+  video_count?: number
+  category?: string
+}
+
+export async function listDownloadedFiles(subdir = ''): Promise<{ path: string; relative: string; parent: string; items: FileItem[] }> {
+  const { data } = await api.get('/download/files', { params: { subdir } })
+  return data
+}
+
+export async function deleteDownloadedFile(filePath: string) {
+  const { data } = await api.delete(`/download/files/${filePath}`, { params: { confirm: true } })
+  return data
+}
+
 // Metadata
 export async function searchMetadata(q: string, limit = 25): Promise<AnimeMetadata[]> {
   const { data } = await api.get('/metadata/search', { params: { q, limit, _t: Date.now() } })
