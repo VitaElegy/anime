@@ -11,32 +11,12 @@ from bs4 import BeautifulSoup
 
 from app.config import settings
 from app.models import SearchResult, TorrentItem
+from app.services.http_client import get_client
 
 logger = logging.getLogger(__name__)
 
 _last_request_time: float = 0
 _lock = asyncio.Lock()
-
-# Reusable async client
-_client: httpx.AsyncClient | None = None
-
-
-def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None or _client.is_closed:
-        kwargs: dict = {
-            "timeout": 30,
-            "headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-            },
-            "follow_redirects": True,
-        }
-        if settings.HTTP_PROXY:
-            kwargs["proxy"] = settings.HTTP_PROXY
-        _client = httpx.AsyncClient(**kwargs)
-    return _client
 
 
 async def _rate_limit():
@@ -80,7 +60,7 @@ async def search_html(
     await _rate_limit()
 
     url = f"{settings.NYAA_BASE_URL}/?f={filter_}&c={category}&q={quote(keyword)}&p={page}"
-    client = _get_client()
+    client = get_client("nyaa")
 
     try:
         resp = await client.get(url)
@@ -150,7 +130,7 @@ async def search_rss(
     await _rate_limit()
 
     url = f"{settings.NYAA_BASE_URL}/?page=rss&c={category}&q={quote(keyword)}"
-    client = _get_client()
+    client = get_client("nyaa")
 
     try:
         resp = await client.get(url)

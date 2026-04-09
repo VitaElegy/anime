@@ -7,21 +7,9 @@ import httpx
 
 from app.config import settings
 from app.models import SearchResult, TorrentItem
+from app.services.http_client import get_client
 
 logger = logging.getLogger(__name__)
-
-_client: httpx.AsyncClient | None = None
-
-
-def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=30,
-            headers={"User-Agent": "AnimeDownloader/1.0"},
-            follow_redirects=True,
-        )
-    return _client
 
 
 async def search(
@@ -36,7 +24,7 @@ async def search(
         quality: Video quality — 1080, 720, or 480.
     """
     url = f"https://subsplease.org/rss/?r={quality}"
-    client = _get_client()
+    client = get_client("default")
 
     try:
         resp = await client.get(url)

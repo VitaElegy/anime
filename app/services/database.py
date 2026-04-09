@@ -181,3 +181,14 @@ def upsert_title_cover(title_hash: str, cleaned_title: str, bangumi_id: int, nam
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (title_hash, cleaned_title, bangumi_id, name_cn, name, cover_url, cover_local),
         )
+
+
+def reverse_lookup_titles(keyword: str, limit: int = 10) -> list[dict]:
+    """Reverse lookup: find titles where name_cn or name LIKE keyword.
+    Used by search.py to translate Chinese keywords to English/romaji."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT cleaned_title, name, name_cn FROM title_cover_map WHERE name_cn LIKE ? OR name LIKE ? LIMIT ?",
+            (f"%{keyword}%", f"%{keyword}%", limit),
+        ).fetchall()
+        return [dict(r) for r in rows]

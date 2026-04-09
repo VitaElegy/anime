@@ -1,4 +1,4 @@
-"""Search routes — Nyaa, SubsPlease, DMHY, Mikan, AnimeTosho, aggregated, with Chinese keyword support."""
+"""Search routes — Nyaa, SubsPlease, DMHY, Mikan, AnimeTosho, AnimeGarden, Comicat, aggregated."""
 
 import asyncio
 import re
@@ -6,7 +6,7 @@ import re
 from fastapi import APIRouter, Query
 
 from app.models import SearchResult, TorrentItem
-from app.services import nyaa, subsplease, bangumi, dmhy, mikan, animetosho
+from app.services import nyaa, subsplease, bangumi, dmhy, mikan, animetosho, animegarden, comicat
 from app.services import database as db
 
 router = APIRouter()
@@ -32,21 +32,13 @@ async def _translate_keyword(keyword: str) -> list[str]:
     alternatives.add(keyword)
 
     # Strategy 1: Local DB reverse lookup (instant, best quality)
-    import sqlite3
     try:
-        conn = sqlite3.connect(str(db.DB_PATH))
-        conn.row_factory = sqlite3.Row
-        # Search name_cn LIKE keyword
-        rows = conn.execute(
-            "SELECT cleaned_title, name, name_cn FROM title_cover_map WHERE name_cn LIKE ? OR name LIKE ? LIMIT 10",
-            (f"%{keyword}%", f"%{keyword}%")
-        ).fetchall()
+        rows = db.reverse_lookup_titles(keyword, limit=10)
         for row in rows:
             if row["cleaned_title"]:
                 alternatives.add(row["cleaned_title"])
             if row["name"]:
                 alternatives.add(row["name"])
-        conn.close()
     except Exception:
         pass
 
@@ -158,9 +150,27 @@ async def search_animetosho(
     return await animetosho.search(search_q, page=page)
 
 
+@router.get("/animegarden", response_model=SearchResult, summary="Search AnimeGarden (开放API聚合)")
+async def search_animegarden(
+    q: str = Query("", description="Search keyword (supports Chinese)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    type: str = Query("", description="Type filter: 动画, 音乐, 合集, etc."),
+):
+    """Search AnimeGarden — aggregates DMHY+Moe+ANi. Open JSON API, native Chinese search, fansub info."""
+    return await animegarden.search(q, page=page, resource_type=type)
+
+
+@router.get("/comicat", response_model=SearchResult, summary="Search 漫猫动漫 (Comicat)")
+async def search_comicat(
+    q: str = Query("", description="Search keyword (supports Chinese)"),
+):
+    """Search Comicat — Chinese fansub BT site. RSS latest + HTML keyword search."""
+    return await comicat.search_rss(q)
+
+
 @router.get("/all", response_model=list[SearchResult], summary="Aggregated search across all sources")
 async def search_all(q: str = Query(..., description="Search keyword")):
-    """Search all 5 sources in parallel: Nyaa + SubsPlease + DMHY + Mikan + AnimeTosho."""
+    """Search all 7 sources in parallel: Nyaa + SubsPlease + DMHY + Mikan + AnimeTosho + AnimeGarden + Comicat."""
     alts = []
     if _has_chinese(q) or _has_japanese(q):
         alts = await _translate_keyword(q)
@@ -208,7 +218,20 @@ async def search_all(q: str = Query(..., description="Search keyword")):
         except Exception:
             return SearchResult(items=[], total=0, source="animetosho")
 
+    async def _search_garden():
+        try:
+            return await animegarden.search(q)
+        except Exception:
+            return SearchResult(items=[], total=0, source="animegarden")
+
+    async def _search_comicat():
+        try:
+            return await comicat.search_rss(q)
+        except Exception:
+            return SearchResult(items=[], total=0, source="comicat")
+
     results = await asyncio.gather(
-        _search_nyaa(), _search_sp(), _search_dmhy(), _search_mikan(), _search_tosho()
+        _search_nyaa(), _search_sp(), _search_dmhy(), _search_mikan(),
+        _search_tosho(), _search_garden(), _search_comicat()
     )
     return list(results)

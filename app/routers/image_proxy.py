@@ -5,44 +5,89 @@ import hashlib
 import logging
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse, Response
 
 from app.config import settings
+from app.services.http_client import get_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# SSRF protection: only allow image proxying from known CDN domains
+ALLOWED_IMAGE_DOMAINS = {
+    # Bangumi
+    "lain.bgm.tv",
+    "bangumi.tv",
+    "bgm.tv",
+    # AniList
+    "s4.anilist.co",
+    "img.anili.st",
+    "anilist.co",
+    # Mikan
+    "mikanani.me",
+    # DMHY
+    "share.dmhy.org",
+    # AnimeTosho
+    "animetosho.org",
+    "feed.animetosho.org",
+    # Nyaa
+    "nyaa.land",
+    # SubsPlease
+    "subsplease.org",
+    # Common CDNs
+    "i.imgur.com",
+    "cdn.myanimelist.net",
+}
+
+
+def _is_url_allowed(url: str) -> bool:
+    """Validate URL against whitelist to prevent SSRF attacks."""
+    try:
+        parsed = urlparse(url)
+        # Must be http or https
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = parsed.hostname or ""
+        # Block private/internal IPs
+        if host in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+            return False
+        # Block common internal ranges
+        if host.startswith(("10.", "172.16.", "172.17.", "172.18.", "172.19.",
+                           "172.20.", "172.21.", "172.22.", "172.23.", "172.24.",
+                           "172.25.", "172.26.", "172.27.", "172.28.", "172.29.",
+                           "172.30.", "172.31.", "192.168.", "169.254.")):
+            return False
+        # Check domain whitelist
+        for allowed in ALLOWED_IMAGE_DOMAINS:
+            if host == allowed or host.endswith(f".{allowed}"):
+                return True
+        return False
+    except Exception:
+        return False
+
 CACHE_DIR = settings.COVER_CACHE_DIR / "proxy_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-_client: httpx.AsyncClient | None = None
 _locks: dict[str, asyncio.Lock] = {}
 _locks_lock = asyncio.Lock()
+_MAX_LOCKS = 500  # Prevent unbounded memory growth
 
 
 async def _get_url_lock(url: str) -> asyncio.Lock:
     """Per-URL lock to allow parallel downloads of different images."""
     async with _locks_lock:
+        # LRU eviction: if too many locks, remove oldest entries
+        if len(_locks) > _MAX_LOCKS:
+            keys_to_remove = list(_locks.keys())[:_MAX_LOCKS // 2]
+            for k in keys_to_remove:
+                _locks.pop(k, None)
         if url not in _locks:
             _locks[url] = asyncio.Lock()
         return _locks[url]
-
-
-def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=20,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-                "Referer": "https://bgm.tv/",
-            },
-            follow_redirects=True,
-        )
-    return _client
 
 
 def _url_to_cache_path(url: str) -> Path:
@@ -75,6 +120,10 @@ async def proxy_image(url: str = Query(..., description="External image URL to p
     if not url:
         return Response(status_code=400, content="Missing url parameter")
 
+    if not _is_url_allowed(url):
+        logger.warning("SSRF blocked: %s", url[:120])
+        return Response(status_code=403, content="URL domain not allowed")
+
     cache_path = _url_to_cache_path(url)
 
     # Cache hit — serve immediately (check all possible extensions)
@@ -100,7 +149,7 @@ async def proxy_image(url: str = Query(..., description="External image URL to p
                     headers={"X-Cache": "HIT", "Cache-Control": "public, max-age=86400"},
                 )
 
-        client = _get_client()
+        client = get_client("image_proxy")
         try:
             resp = await client.get(url)
             resp.raise_for_status()
@@ -134,8 +183,14 @@ async def batch_prefetch(urls: str = Query(..., description="Comma-separated ima
     """
     Trigger background prefetch for multiple images.
     Returns immediately with count of cached/pending.
+    Limited to 50 URLs per request.
     """
     url_list = [u.strip() for u in urls.split(",") if u.strip()]
+    if len(url_list) > 50:
+        return Response(status_code=400, content="Maximum 50 URLs per request")
+
+    # Filter out disallowed URLs
+    url_list = [u for u in url_list if _is_url_allowed(u)]
 
     cached = 0
     pending = 0
@@ -148,7 +203,7 @@ async def batch_prefetch(urls: str = Query(..., description="Comma-separated ima
 
     # Fire-and-forget background downloads for uncached
     async def _prefetch():
-        client = _get_client()
+        client = get_client("image_proxy")
         for url in url_list:
             cache_path = _url_to_cache_path(url)
             if cache_path.exists() and cache_path.stat().st_size > 0:

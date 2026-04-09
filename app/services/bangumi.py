@@ -9,30 +9,16 @@ import httpx
 
 from app.config import settings
 from app.models import AnimeMetadata
+from app.services.http_client import get_client
 
 logger = logging.getLogger(__name__)
 
 _last_request_time: float = 0
 _lock = asyncio.Lock()
 
-# In-memory cache: subject_id -> AnimeMetadata
+# In-memory cache: subject_id -> AnimeMetadata (LRU-like, max 2000 entries)
 _metadata_cache: dict[int, AnimeMetadata] = {}
-
-_client: httpx.AsyncClient | None = None
-
-
-def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=30,
-            headers={
-                "User-Agent": "AnimeDownloader/1.0",
-                "Accept": "application/json",
-            },
-            follow_redirects=True,
-        )
-    return _client
+_METADATA_CACHE_MAX = 2000
 
 
 async def _rate_limit():
@@ -52,7 +38,7 @@ async def search(keyword: str, limit: int = 25) -> list[AnimeMetadata]:
     type=2 means Animation.
     """
     await _rate_limit()
-    client = _get_client()
+    client = get_client("bangumi")
     url = f"{settings.BANGUMI_API_BASE}/search/subject/{keyword}"
 
     try:
@@ -89,7 +75,7 @@ async def get_detail(subject_id: int) -> AnimeMetadata | None:
         return _metadata_cache[subject_id]
 
     await _rate_limit()
-    client = _get_client()
+    client = get_client("bangumi")
     url = f"{settings.BANGUMI_API_BASE}/v0/subjects/{subject_id}"
 
     try:
@@ -111,6 +97,12 @@ async def get_detail(subject_id: int) -> AnimeMetadata | None:
         score=data.get("rating", {}).get("score", 0.0) if data.get("rating") else 0.0,
         cover_url=cover_url,
     )
+
+    # Evict oldest entries if cache is full
+    if len(_metadata_cache) >= _METADATA_CACHE_MAX:
+        keys_to_remove = list(_metadata_cache.keys())[:_METADATA_CACHE_MAX // 2]
+        for k in keys_to_remove:
+            _metadata_cache.pop(k, None)
 
     _metadata_cache[subject_id] = meta
     return meta
@@ -138,7 +130,7 @@ async def get_cover(subject_id: int) -> Path | None:
 
     # Download
     await _rate_limit()
-    client = _get_client()
+    client = get_client("bangumi")
 
     try:
         resp = await client.get(meta.cover_url)

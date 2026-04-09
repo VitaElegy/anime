@@ -45,6 +45,8 @@ class Room:
 
 # In-memory room store
 rooms: dict[str, Room] = {}
+MAX_ROOMS = 50
+MAX_CHAT_LENGTH = 500
 
 
 def _room_info(room: Room) -> dict:
@@ -80,6 +82,8 @@ async def list_rooms():
 
 @router.post("/rooms", summary="Create a new room")
 async def create_room(name: str = "放映室", video_url: str = ""):
+    if len(rooms) >= MAX_ROOMS:
+        return JSONResponse(status_code=429, content={"detail": f"Maximum {MAX_ROOMS} rooms reached"})
     room_id = uuid.uuid4().hex[:8]
     room = Room(room_id=room_id, name=name, video_url=video_url)
     rooms[room_id] = room
@@ -235,11 +239,14 @@ async def ws_room(
 
             # ── Chat messages ──
             elif msg_type == "chat":
+                content = msg.get("content", "")[:MAX_CHAT_LENGTH]
+                if not content:
+                    continue
                 chat_msg = {
                     "type": "chat",
                     "user_id": uid,
                     "nickname": nickname,
-                    "content": msg.get("content", ""),
+                    "content": content,
                     "timestamp": time.time(),
                 }
                 room.chat_history.append(chat_msg)

@@ -9,31 +9,14 @@ import httpx
 
 from app.config import settings
 from app.models import SearchResult, TorrentItem
+from app.services.http_client import get_client
 
 logger = logging.getLogger(__name__)
 
 TOSHO_API = "https://feed.animetosho.org/json"
 
-_client: httpx.AsyncClient | None = None
 _last_request_time: float = 0
 _lock = asyncio.Lock()
-
-
-def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None or _client.is_closed:
-        kwargs: dict = {
-            "timeout": 30,
-            "headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                "Accept": "application/json",
-            },
-            "follow_redirects": True,
-        }
-        if settings.HTTP_PROXY:
-            kwargs["proxy"] = settings.HTTP_PROXY
-        _client = httpx.AsyncClient(**kwargs)
-    return _client
 
 
 async def _rate_limit():
@@ -78,7 +61,7 @@ async def search(keyword: str, page: int = 1, show_only: bool = False) -> Search
     if show_only:
         params["show"] = "true"
 
-    client = _get_client()
+    client = get_client("animetosho")
     try:
         resp = await client.get(TOSHO_API, params=params)
         resp.raise_for_status()

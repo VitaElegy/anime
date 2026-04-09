@@ -4,24 +4,11 @@ import logging
 
 import httpx
 
+from app.services.http_client import get_client
+
 logger = logging.getLogger(__name__)
 
 ANILIST_URL = "https://graphql.anilist.co"
-
-_client: httpx.AsyncClient | None = None
-
-
-def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=15,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-        )
-    return _client
 
 
 # ─── Search ───
@@ -149,7 +136,7 @@ async def search(keyword: str, page: int = 1, per_page: int = 20) -> dict:
 
 async def _do_search(keyword: str, page: int = 1, per_page: int = 20) -> dict:
     """Raw AniList search."""
-    client = _get_client()
+    client = get_client("anilist")
     try:
         resp = await client.post(ANILIST_URL, json={
             "query": SEARCH_QUERY,
@@ -175,7 +162,7 @@ async def _do_search(keyword: str, page: int = 1, per_page: int = 20) -> dict:
 
 async def get_trending(season: str = "", year: int = 0, page: int = 1, per_page: int = 20) -> dict:
     """Get currently trending anime."""
-    client = _get_client()
+    client = get_client("anilist")
     variables: dict = {"page": page, "perPage": per_page}
     if season:
         variables["season"] = season.upper()
@@ -202,7 +189,7 @@ async def get_trending(season: str = "", year: int = 0, page: int = 1, per_page:
 
 async def get_airing_schedule(page: int = 1, per_page: int = 50) -> dict:
     """Get upcoming airing schedule."""
-    client = _get_client()
+    client = get_client("anilist")
     try:
         resp = await client.post(ANILIST_URL, json={
             "query": SCHEDULE_QUERY,

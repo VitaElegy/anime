@@ -10,6 +10,7 @@ from app.config import settings
 from app.routers import anilist as anilist_router, cover_resolve, crawl, download, favorites, image_proxy, metadata, schedule, search, watchparty
 from app.services import database as db
 from app.services.qbittorrent import qb_service
+from app.services.http_client import close_all_clients
 
 logger = logging.getLogger("anime-downloader")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -34,7 +35,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
+    # Shutdown — close all httpx clients
+    await close_all_clients()
     logger.info("Shutting down")
 
 
@@ -45,11 +47,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow all origins for local dev
+# CORS — restrict to known frontend origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -70,7 +72,7 @@ app.include_router(watchparty.router, prefix="/api/watchparty", tags=["WatchPart
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled error: %s", exc, exc_info=True)
-    return JSONResponse(status_code=500, content={"detail": str(exc), "code": "internal_error"})
+    return JSONResponse(status_code=500, content={"detail": "Internal server error", "code": "internal_error"})
 
 
 @app.get("/", include_in_schema=False)

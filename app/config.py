@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     # AnimeTosho (种子聚合)
     ANIMETOSHO_API: str = "https://feed.animetosho.org/json"
 
+    # AnimeGarden (开放API聚合)
+    ANIMEGARDEN_API: str = "https://api.animes.garden"
+
+    # Comicat (漫猫动漫)
+    COMICAT_BASE_URL: str = "https://comicat.org"
+
     # Paths
     DOWNLOAD_DIR: Path = Path("D:/downloads/anime")
     COVER_CACHE_DIR: Path = Path("D:/work/anime/covers")

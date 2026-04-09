@@ -12,32 +12,14 @@ from bs4 import BeautifulSoup
 
 from app.config import settings
 from app.models import SearchResult, TorrentItem
+from app.services.http_client import get_client
 
 logger = logging.getLogger(__name__)
 
 MIKAN_BASE = "https://mikanani.me"
 
-_client: httpx.AsyncClient | None = None
 _last_request_time: float = 0
 _lock = asyncio.Lock()
-
-
-def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None or _client.is_closed:
-        kwargs: dict = {
-            "timeout": 30,
-            "headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            },
-            "follow_redirects": True,
-        }
-        if settings.HTTP_PROXY:
-            kwargs["proxy"] = settings.HTTP_PROXY
-        _client = httpx.AsyncClient(**kwargs)
-    return _client
 
 
 async def _rate_limit():
@@ -58,7 +40,7 @@ async def search_rss(keyword: str) -> SearchResult:
     await _rate_limit()
 
     url = f"{MIKAN_BASE}/RSS/Search?searchstr={quote(keyword)}"
-    client = _get_client()
+    client = get_client("mikan")
 
     try:
         resp = await client.get(url)
@@ -117,7 +99,7 @@ async def get_current_season_rss() -> SearchResult:
     await _rate_limit()
 
     url = f"{MIKAN_BASE}/RSS/Classic"
-    client = _get_client()
+    client = get_client("mikan")
 
     try:
         resp = await client.get(url)

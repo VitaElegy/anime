@@ -4,20 +4,9 @@ import logging
 import httpx
 from bs4 import BeautifulSoup
 
+from app.services.http_client import get_client
+
 logger = logging.getLogger(__name__)
-
-_client: httpx.AsyncClient | None = None
-
-
-def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=30,
-            headers={"User-Agent": "NicoTracker/1.0"},
-            follow_redirects=True,
-        )
-    return _client
 
 
 async def get_schedule() -> dict:
@@ -25,7 +14,7 @@ async def get_schedule() -> dict:
     Fetch SubsPlease schedule page and parse the weekly airing table.
     Returns: {"Monday": [...], "Tuesday": [...], ...}
     """
-    client = _get_client()
+    client = get_client("schedule")
     try:
         resp = await client.get("https://subsplease.org/schedule/")
         resp.raise_for_status()

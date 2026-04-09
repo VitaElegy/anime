@@ -1,9 +1,11 @@
 """Download management routes — add, pause, resume, delete, progress."""
 
 import asyncio
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.config import settings
 from app.models import BatchDownloadRequest, DownloadRequest, DownloadTask
 from app.services.qbittorrent import qb_service
 
@@ -15,15 +17,26 @@ def _check_connected():
         raise HTTPException(status_code=503, detail="qBittorrent is not connected")
 
 
+def _validate_save_path(save_path: str) -> str:
+    """Validate save_path is within DOWNLOAD_DIR to prevent path traversal."""
+    if not save_path:
+        return str(settings.DOWNLOAD_DIR)
+    resolved = Path(save_path).resolve()
+    allowed = settings.DOWNLOAD_DIR.resolve()
+    if not str(resolved).startswith(str(allowed)):
+        raise HTTPException(status_code=400, detail="save_path must be within the download directory")
+
+
 @router.post("", summary="Add a single download")
 async def add_download(req: DownloadRequest):
     _check_connected()
+    validated_path = _validate_save_path(req.save_path)
     try:
         result = await asyncio.to_thread(
             qb_service.add_torrent,
             magnet=req.magnet,
             torrent_url=req.torrent_url,
-            save_path=req.save_path,
+            save_path=validated_path,
             category=req.category,
         )
         return {"status": "ok" if result == "Ok." else "error", "detail": result}
