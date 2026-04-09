@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { getCrawlHistory } from '@/api'
 import type { CrawlLogEntry } from '@/types'
 
-type CrawlSource = 'subsplease' | 'nyaa' | 'bangumi' | 'dmhy' | 'mikan' | 'animetosho'
+type CrawlSource = 'subsplease' | 'nyaa' | 'bangumi' | 'dmhy' | 'mikan' | 'animetosho' | 'animegarden' | 'comicat'
 
 interface SourceConfig {
   key: CrawlSource
@@ -40,6 +40,16 @@ const sources: SourceConfig[] = [
     key: 'animetosho', label: 'AnimeTosho', description: '种子聚合 JSON API',
     capabilities: ['聚合 Nyaa/TokyoTosho/AniDex 等多源', '干净 JSON API', '含做种/下载数', '支持分页', '英文关键词搜索（自动翻译中文）'],
     pageSize: 50, maxPages: 5,
+  },
+  {
+    key: 'animegarden', label: 'AnimeGarden', description: '开放 API 资源聚合',
+    capabilities: ['聚合 DMHY+Moe+ANi 等数据源', '开放 JSON API（无需认证）', '原生中文搜索', '含字幕组+发布者信息', '支持类型/关键词过滤', '关联 Bangumi 条目 ID'],
+    pageSize: 50, maxPages: 5,
+  },
+  {
+    key: 'comicat', label: '漫猫动漫', description: '中文字幕组 BT 资源',
+    capabilities: ['RSS 最新资源', 'HTML 关键词搜索', '中文字幕组覆盖', '活跃更新'],
+    pageSize: 0, maxPages: 1,
   },
   {
     key: 'bangumi', label: 'Bangumi', description: '番剧元数据',

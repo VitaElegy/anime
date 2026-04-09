@@ -37,6 +37,16 @@ export async function searchAnimeTosho(q: string, page = 1): Promise<SearchResul
   return data
 }
 
+export async function searchAnimeGarden(q = '', page = 1, type = ''): Promise<SearchResult> {
+  const { data } = await api.get('/search/animegarden', { params: { q, page, type } })
+  return data
+}
+
+export async function searchComicat(q = ''): Promise<SearchResult> {
+  const { data } = await api.get('/search/comicat', { params: { q } })
+  return data
+}
+
 // Download
 export async function addDownload(req: DownloadRequest) {
   const { data } = await api.post('/download', req)
