@@ -11,6 +11,7 @@ from app.routers import anilist as anilist_router, cover_resolve, crawl, downloa
 from app.services import database as db
 from app.services.qbittorrent import qb_service
 from app.services.http_client import close_all_clients
+from app.services import aria2_engine
 
 logger = logging.getLogger("anime-downloader")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -30,12 +31,28 @@ async def lifespan(app: FastAPI):
     try:
         await asyncio.wait_for(asyncio.to_thread(qb_service.connect), timeout=5)
         logger.info("Connected to qBittorrent at %s", settings.qb_url)
+        # Pre-cache engine selection so first request is instant
+        from app.routers import download as dl_router
+        dl_router._active_engine = "qbittorrent"
+        dl_router._engine_checked_at = __import__("time").monotonic()
     except Exception as e:
-        logger.warning("qBittorrent not available: %s (download features disabled)", e)
+        logger.warning("qBittorrent not available: %s — trying built-in aria2 engine", e)
+        try:
+            ok = await aria2_engine.ensure_running()
+            if ok:
+                logger.info("Built-in aria2 engine started (zero-config BT downloads ready)")
+                from app.routers import download as dl_router
+                dl_router._active_engine = "aria2"
+                dl_router._engine_checked_at = __import__("time").monotonic()
+            else:
+                logger.warning("aria2 engine also failed — download features disabled until engine available")
+        except Exception as e2:
+            logger.warning("aria2 engine startup failed: %s", e2)
 
     yield
 
-    # Shutdown — close all httpx clients
+    # Shutdown — close all httpx clients + aria2 subprocess
+    await aria2_engine.shutdown()
     await close_all_clients()
     logger.info("Shutting down")
 

@@ -23,3 +23,7 @@ Thumbs.db
 
 # CodeBuddy
 .codebuddy/
+
+# Runtime binaries & data
+bin/
+data/
