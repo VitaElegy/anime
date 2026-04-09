@@ -34,7 +34,12 @@ async def get_schedule() -> dict:
     data = resp.json()
     schedule: dict[str, list[dict]] = {}
 
-    for eng_day, shows in data.get("schedule", data).items():
+    raw_schedule = data.get("schedule", data)
+    if not isinstance(raw_schedule, dict):
+        logger.warning("SubsPlease schedule returned non-dict: %s", type(raw_schedule).__name__)
+        return {}
+
+    for eng_day, shows in raw_schedule.items():
         day_cn = DAY_MAP.get(eng_day, eng_day)
         if not isinstance(shows, list):
             continue

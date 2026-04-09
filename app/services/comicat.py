@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 import feedparser
 import httpx
+from bs4 import BeautifulSoup
 
 from app.models import SearchResult, TorrentItem
 from app.services.http_client import get_client
@@ -120,7 +121,6 @@ async def _search_html(keyword: str) -> SearchResult:
         logger.warning("Comicat HTML search failed: %s — falling back to RSS filter", e)
         return await _rss_filter(keyword)
 
-    from bs4 import BeautifulSoup
     soup = BeautifulSoup(resp.text, "html.parser")
     items: list[TorrentItem] = []
 

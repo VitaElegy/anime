@@ -8,7 +8,6 @@ API docs: https://deepwiki.com/yjl9903/AnimeGarden/6-api-and-integration
 import asyncio
 import logging
 import time
-from urllib.parse import quote
 
 import httpx
 

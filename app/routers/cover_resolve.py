@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -191,7 +192,6 @@ async def batch_resolve_covers(req: CoverRequest):
             elif row.get("bangumi_id", 0) == 0:
                 created_at = row.get("created_at", "")
                 if created_at:
-                    from datetime import datetime, timedelta, timezone
                     try:
                         ts = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                         age = datetime.now(timezone.utc) - ts
