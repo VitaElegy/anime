@@ -168,6 +168,16 @@ async def search_comicat(
     return await comicat.search_rss(q)
 
 
+@router.get("/by-bangumi-id/{bangumi_id}", response_model=SearchResult, summary="Search torrents by Bangumi ID")
+async def search_by_bangumi_id(
+    bangumi_id: int,
+    page: int = Query(1, ge=1),
+):
+    """Direct torrent search via Bangumi subject ID using AnimeGarden's indexed query.
+    This is the fastest and most accurate search path — no fuzzy title matching needed."""
+    return await animegarden.search_by_bangumi_id(bangumi_id, page=page)
+
+
 @router.get("/all", response_model=list[SearchResult], summary="Aggregated search across all sources")
 async def search_all(q: str = Query(..., description="Search keyword")):
     """Search all 7 sources in parallel: Nyaa + SubsPlease + DMHY + Mikan + AnimeTosho + AnimeGarden + Comicat."""

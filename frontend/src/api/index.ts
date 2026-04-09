@@ -47,6 +47,11 @@ export async function searchComicat(q = ''): Promise<SearchResult> {
   return data
 }
 
+export async function searchByBangumiId(bangumiId: number, page = 1): Promise<SearchResult> {
+  const { data } = await api.get(`/search/by-bangumi-id/${bangumiId}`, { params: { page } })
+  return data
+}
+
 // Download
 export async function addDownload(req: DownloadRequest) {
   const { data } = await api.post('/download', req)
@@ -126,8 +131,13 @@ export async function updateFavorite(bangumiId: number, updates: Record<string, 
 }
 
 // Schedule
-export async function getWeeklySchedule(): Promise<Record<string, { title: string; page: string; day: string }[]>> {
+export async function getWeeklySchedule(): Promise<Record<string, { title: string; page: string; day: string; time?: string; image_url?: string }[]>> {
   const { data } = await api.get('/schedule')
+  return data
+}
+
+export async function getShowEpisodes(sid: number): Promise<{ show: string; episodes: { episode: string; date: string; downloads: { res: string; magnet: string; torrent: string }[] }[] }> {
+  const { data } = await api.get(`/schedule/show/${sid}`)
   return data
 }
 

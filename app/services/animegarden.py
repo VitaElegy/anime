@@ -151,3 +151,54 @@ async def search(
 async def get_latest(page: int = 1, page_size: int = 50, resource_type: str = "动画") -> SearchResult:
     """Get latest anime resources from AnimeGarden."""
     return await search(keyword="", page=page, page_size=page_size, resource_type=resource_type)
+
+
+async def search_by_bangumi_id(subject_id: int, page: int = 1, page_size: int = 50) -> SearchResult:
+    """
+    Search AnimeGarden by Bangumi subject ID.
+    This is the FASTEST query path (indexed) and most accurate (no fuzzy matching).
+    """
+    await _rate_limit()
+
+    params: dict = {
+        "page": page,
+        "pageSize": min(page_size, 100),
+        "subject": subject_id,
+    }
+
+    client = get_client("default")
+    try:
+        resp = await client.get(f"{GARDEN_API}/resources", params=params)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        logger.error("AnimeGarden subject search failed for %d: %s", subject_id, e)
+        return SearchResult(items=[], total=0, source="animegarden")
+
+    data = resp.json()
+    items: list[TorrentItem] = []
+
+    for entry in data.get("resources", []):
+        title = entry.get("title", "")
+        magnet = entry.get("magnet", "")
+        size_kb = entry.get("size", 0)
+        size = _format_size(size_kb)
+        created = entry.get("createdAt", "")
+        date = created[:16].replace("T", " ") if created else ""
+
+        if title:
+            items.append(
+                TorrentItem(
+                    title=title,
+                    magnet=magnet,
+                    torrent_url=entry.get("href", ""),
+                    size=size,
+                    date=date,
+                    source="animegarden",
+                )
+            )
+
+    total = len(items)
+    if not data.get("complete", True):
+        total = max(total, page * page_size)
+
+    return SearchResult(items=items, total=total, source="animegarden")

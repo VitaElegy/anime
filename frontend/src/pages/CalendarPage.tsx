@@ -109,7 +109,7 @@ export default function CalendarPage() {
     }
   }
 
-  interface CalEntry { title: string; rawTitle?: string; sub?: string; coverUrl?: string }
+  interface CalEntry { title: string; rawTitle?: string; sub?: string; coverUrl?: string; time?: string }
 
   const buildEntries = (dayIdx: number, dayName: string): CalEntry[] => {
     const schedShows = scheduleData[dayName] || []
@@ -118,7 +118,12 @@ export default function CalendarPage() {
     const entries: CalEntry[] = []
 
     for (const s of schedShows) {
-      if (!seen.has(s.title)) { seen.add(s.title); entries.push({ title: s.title }) }
+      if (!seen.has(s.title)) {
+        seen.add(s.title)
+        // Use SubsPlease API image_url if available
+        const spImage = (s as Record<string, unknown>).image_url as string || ''
+        entries.push({ title: s.title, time: (s as Record<string, unknown>).time as string || '', coverUrl: spImage || undefined })
+      }
     }
     for (const r of rssItems) {
       const { name, cover } = getDisplay(r.title)
