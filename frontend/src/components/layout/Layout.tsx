@@ -4,11 +4,19 @@ import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 
 export function Layout() {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true')
+
+  const handleToggle = () => {
+    setCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('sidebar_collapsed', String(next))
+      return next
+    })
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-primary">
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+      <Sidebar collapsed={collapsed} onToggle={handleToggle} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <TopBar sidebarCollapsed={collapsed} />
         <main className="flex-1 overflow-y-auto p-6">

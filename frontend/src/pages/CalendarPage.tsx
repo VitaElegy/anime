@@ -16,7 +16,7 @@ function getDayOfWeek(dateStr: string): number {
   } catch { return -1 }
 }
 
-interface CoverInfo { cover_url: string; name_cn: string; name: string }
+interface CoverInfo { cover_url: string; name_cn: string; name: string; cleaned_title?: string }
 
 // Clean title for dedup — extract anime name from torrent title
 function cleanTitle(t: string): string {
@@ -63,8 +63,11 @@ export default function CalendarPage() {
           const batch = uniqueTitles.slice(i, i + 25)
           const results = await batchResolveCovers(batch)
           for (const c of results) {
-            if (c.cover_url) {
-              allCovers[c.title] = { cover_url: c.cover_url, name_cn: c.name_cn, name: c.name }
+            allCovers[c.title] = {
+              cover_url: c.cover_url || '',
+              name_cn: c.name_cn || '',
+              name: c.name || '',
+              cleaned_title: (c as Record<string, unknown>).cleaned_title as string || '',
             }
           }
         } catch { /* continue with next batch */ }

@@ -5,6 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** SVG placeholder for missing anime covers */
+export const NO_COVER_SVG = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect fill="%231a1a2e" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>'
+
+/** Image onError handler: replace broken images with SVG placeholder */
+export function onCoverError(e: React.SyntheticEvent<HTMLImageElement>) {
+  ;(e.target as HTMLImageElement).src = NO_COVER_SVG
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
   const k = 1024

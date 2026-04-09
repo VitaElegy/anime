@@ -41,9 +41,13 @@ export function TopBar({ sidebarCollapsed: _sidebarCollapsed }: TopBarProps) {
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
-        <button className="relative rounded-lg p-2 text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors">
+        <button
+          className="relative rounded-lg p-2 text-text-muted hover:bg-bg-hover transition-colors opacity-50 cursor-not-allowed"
+          title="通知功能开发中"
+          disabled
+          aria-label="通知（开发中）"
+        >
           <Bell className="h-5 w-5" />
-          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent-primary pulse-dot" />
         </button>
       </div>
     </header>

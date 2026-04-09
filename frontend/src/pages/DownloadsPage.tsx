@@ -51,18 +51,30 @@ export default function DownloadsPage() {
   }, [])
 
   const handlePause = async (hash: string) => {
-    await pauseTorrent(hash)
+    try {
+      await pauseTorrent(hash)
+    } catch {
+      // silent — will refresh anyway
+    }
     refresh()
   }
 
   const handleResume = async (hash: string) => {
-    await resumeTorrent(hash)
+    try {
+      await resumeTorrent(hash)
+    } catch {
+      // silent
+    }
     refresh()
   }
 
   const handleDelete = async (hash: string) => {
     if (!confirm('确定删除此任务？')) return
-    await deleteTorrent(hash, false)
+    try {
+      await deleteTorrent(hash, false)
+    } catch {
+      // silent
+    }
     refresh()
   }
 

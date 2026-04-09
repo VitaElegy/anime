@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Search, Star, Heart, Loader2, BookOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { onCoverError } from '@/lib/utils'
 import { searchMetadata, getCoverUrl, getFavorites, addFavorite, removeFavorite, updateFavorite } from '@/api'
 import type { AnimeMetadata } from '@/types'
 
@@ -143,7 +144,7 @@ export default function LibraryPage() {
           <div className="relative max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-bg-secondary border border-border p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex gap-6">
               <img src={getCoverUrl(selectedAnime.id)} alt={selectedAnime.name_cn || selectedAnime.name} className="h-64 w-44 shrink-0 rounded-xl object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 256"><rect fill="%231a1a2e" width="176" height="256"/><text x="88" y="128" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>' }} />
+                onError={onCoverError} />
               <div className="flex-1 space-y-3">
                 <h2 className="text-xl font-bold">{selectedAnime.name_cn || selectedAnime.name}</h2>
                 {selectedAnime.name_cn && <p className="text-sm text-text-secondary">{selectedAnime.name}</p>}
@@ -186,7 +187,7 @@ export default function LibraryPage() {
               }}>
                 <div className="poster-card card-hover border border-border relative">
                   <img src={getCoverUrl(fav.bangumi_id)} alt={fav.name_cn || fav.name} loading="lazy"
-                    onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect fill="%231a1a2e" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>' }} />
+                    onError={onCoverError} />
                   <div className="absolute top-2 left-2">
                     <select
                       value={fav.status}
@@ -225,7 +226,7 @@ export default function LibraryPage() {
               <div key={anime.id} className="group cursor-pointer" onClick={() => setSelectedAnime(anime)}>
                 <div className="poster-card card-hover border border-border relative">
                   <img src={getCoverUrl(anime.id)} alt={anime.name_cn || anime.name} loading="lazy"
-                    onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect fill="%231a1a2e" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>' }} />
+                    onError={onCoverError} />
                   {favSet.has(anime.id) && (
                     <div className="absolute top-2 left-2">
                       <Heart className="h-4 w-4 text-accent-primary fill-accent-primary drop-shadow" />

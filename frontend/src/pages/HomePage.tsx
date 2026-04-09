@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { TrendingUp, Download, Search, Calendar, Terminal, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { onCoverError } from '@/lib/utils'
 import { searchSubsPlease, getDownloadProgress, batchResolveCovers, proxyImageUrl } from '@/api'
 import type { TorrentItem, DownloadTask } from '@/types'
 import { formatBytes } from '@/lib/utils'
@@ -108,7 +109,7 @@ export default function HomePage() {
                   <div className="poster-card card-hover border border-border relative bg-bg-card">
                     {info?.cover_url ? (
                       <img src={proxyImageUrl(info.cover_url)} alt={displayName} loading="lazy" className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect fill="%231a1a2e" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>' }} />
+                        onError={onCoverError} />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-bg-card to-bg-secondary">
                         <span className="text-3xl font-bold text-border">{displayName.charAt(0)}</span>

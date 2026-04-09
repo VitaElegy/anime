@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { Layout } from './components/layout/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 
@@ -21,18 +22,20 @@ function PageLoader() {
 
 export default function App() {
   return (
-    <Suspense fallback={<PageLoader />}>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/downloads" element={<DownloadsPage />} />
-          <Route path="/library" element={<LibraryPage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/crawl" element={<CrawlPage />} />
-          <Route path="/watchparty" element={<WatchPartyPage />} />
-        </Route>
-      </Routes>
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/downloads" element={<DownloadsPage />} />
+            <Route path="/library" element={<LibraryPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/crawl" element={<CrawlPage />} />
+            <Route path="/watchparty" element={<WatchPartyPage />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   )
 }

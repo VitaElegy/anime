@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Search, Download, ExternalLink, Loader2, ArrowUpDown, CheckCircle2, XCircle, Star, Globe, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { searchNyaa, searchSubsPlease, searchDmhy, searchMikan, searchAnimeTosho, addDownload, anilistSearch, proxyImageUrl } from '@/api'
+import { searchNyaa, searchSubsPlease, searchDmhy, searchMikan, searchAnimeTosho, searchAnimeGarden, searchComicat, addDownload, anilistSearch, proxyImageUrl } from '@/api'
 import type { TorrentItem, SearchResult } from '@/types'
 import type { AniListAnime } from '@/api'
 
@@ -18,6 +18,7 @@ export default function SearchPage() {
   const [downloading, setDownloading] = useState<Set<number>>(new Set())
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const lastSearchedQ = useRef('')
+  const searchVersionRef = useRef(0)
 
   const showToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type })
@@ -26,26 +27,32 @@ export default function SearchPage() {
 
   const doSearch = useCallback(async (q: string, m: SearchMode) => {
     if (!q.trim()) return
+    const version = ++searchVersionRef.current
     setLoading(true)
     setTorrentResults([])
     setAnilistResults([])
     try {
       if (m === 'anilist') {
         const result = await anilistSearch(q, 1, 24)
-        setAnilistResults(result.items)
+        if (searchVersionRef.current === version) setAnilistResults(result.items)
       } else {
-        const [nyaa, sp, dmhyR, mikanR, toshoR] = await Promise.allSettled([
-          searchNyaa(q), searchSubsPlease(q), searchDmhy(q), searchMikan(q), searchAnimeTosho(q)
+        const [nyaa, sp, dmhyR, mikanR, toshoR, gardenR, comicatR] = await Promise.allSettled([
+          searchNyaa(q), searchSubsPlease(q), searchDmhy(q), searchMikan(q), searchAnimeTosho(q), searchAnimeGarden(q), searchComicat(q)
         ])
+        if (searchVersionRef.current !== version) return
         const items: TorrentItem[] = []
         if (nyaa.status === 'fulfilled') items.push(...nyaa.value.items)
         if (sp.status === 'fulfilled') items.push(...sp.value.items)
         if (dmhyR.status === 'fulfilled') items.push(...dmhyR.value.items)
         if (mikanR.status === 'fulfilled') items.push(...mikanR.value.items)
         if (toshoR.status === 'fulfilled') items.push(...toshoR.value.items)
+        if (gardenR.status === 'fulfilled') items.push(...gardenR.value.items)
+        if (comicatR.status === 'fulfilled') items.push(...comicatR.value.items)
         setTorrentResults(items)
       }
-    } catch { /* silent */ } finally { setLoading(false) }
+    } catch { /* silent */ } finally {
+      if (searchVersionRef.current === version) setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -124,7 +131,7 @@ export default function SearchPage() {
           <button onClick={() => handleModeSwitch('torrent')}
             className={cn('flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors',
               mode === 'torrent' ? 'bg-accent-primary text-white' : 'bg-bg-card text-text-muted hover:text-text-secondary')}>
-            <Zap className="h-3.5 w-3.5" /> 种子搜索 (5源聚合)
+            <Zap className="h-3.5 w-3.5" /> 种子搜索 (7源聚合)
           </button>
         </div>
         <div className="flex items-center gap-2 text-[10px]">
@@ -137,6 +144,8 @@ export default function SearchPage() {
               <span className="px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary font-medium">动漫花园</span>
               <span className="px-2 py-0.5 rounded-full bg-accent-gold/10 text-accent-gold font-medium">蜜柑计划</span>
               <span className="px-2 py-0.5 rounded-full bg-success/10 text-success font-medium">AnimeTosho</span>
+              <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 font-medium">AnimeGarden</span>
+              <span className="px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-400 font-medium">漫猫</span>
             </>
           )}
         </div>
@@ -206,6 +215,8 @@ export default function SearchPage() {
                         : item.source === 'dmhy' ? 'bg-accent-primary/10 text-accent-primary'
                         : item.source === 'mikan' ? 'bg-accent-gold/10 text-accent-gold'
                         : item.source === 'animetosho' ? 'bg-success/10 text-success'
+                        : item.source === 'animegarden' ? 'bg-purple-500/10 text-purple-400'
+                        : item.source === 'comicat' ? 'bg-pink-500/10 text-pink-400'
                         : 'bg-bg-card text-text-muted')}>
                       {item.source}
                     </span>

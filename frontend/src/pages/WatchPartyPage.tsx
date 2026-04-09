@@ -98,6 +98,7 @@ export default function WatchPartyPage() {
   // WebSocket
   const wsRef = useRef<WebSocket | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const handleWsMessageRef = useRef<(msg: any) => void>(() => {})
 
   // ── Fetch rooms ──
   const fetchRooms = useCallback(async () => {
@@ -134,7 +135,7 @@ export default function WatchPartyPage() {
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data)
-      handleWsMessage(msg)
+      handleWsMessageRef.current(msg)
     }
 
     ws.onclose = () => {
@@ -236,6 +237,9 @@ export default function WatchPartyPage() {
         break
     }
   }, [voiceEnabled, userId])
+
+  // Keep ref in sync with latest handleWsMessage (fixes stale closure)
+  handleWsMessageRef.current = handleWsMessage
 
   // ── Video player events ──
   const onVideoPlay = () => {
