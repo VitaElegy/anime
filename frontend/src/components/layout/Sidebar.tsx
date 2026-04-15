@@ -6,6 +6,7 @@ import {
   Library,
   Calendar,
   Terminal,
+  Tv,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -17,6 +18,7 @@ const navItems = [
   { to: '/downloads', icon: Download, label: '下载' },
   { to: '/library', icon: Library, label: '番剧库' },
   { to: '/calendar', icon: Calendar, label: '新番日历' },
+  { to: '/watch', icon: Tv, label: '一起看' },
   { to: '/crawl', icon: Terminal, label: '抓取控制台' },
 ]
 

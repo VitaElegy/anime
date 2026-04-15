@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Play, Square, Trash2, Radio, History, Info, ChevronDown, ChevronUp } from 'lucide-react'
+import { Play, Square, Trash2, Radio, History, Info, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getCrawlHistory } from '@/api'
 import type { CrawlLogEntry } from '@/types'

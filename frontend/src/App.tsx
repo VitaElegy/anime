@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { Layout } from './components/layout/Layout'
 import { lazy, Suspense } from 'react'
+import type { ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
@@ -8,7 +9,10 @@ const SearchPage = lazy(() => import('./pages/SearchPage'))
 const DownloadsPage = lazy(() => import('./pages/DownloadsPage'))
 const LibraryPage = lazy(() => import('./pages/LibraryPage'))
 const CalendarPage = lazy(() => import('./pages/CalendarPage'))
+const AnimeDetailPage = lazy(() => import('./pages/AnimeDetailPage'))
 const CrawlPage = lazy(() => import('./pages/CrawlPage'))
+const WatchPartyPage = lazy(() => import('./pages/WatchPartyPage'))
+const WatchRoomPage = lazy(() => import('./pages/WatchRoomPage'))
 
 function PageLoader() {
   return (
@@ -18,19 +22,24 @@ function PageLoader() {
   )
 }
 
+function withPageSuspense(node: ReactNode) {
+  return <Suspense fallback={<PageLoader />}>{node}</Suspense>
+}
+
 export default function App() {
   return (
-    <Suspense fallback={<PageLoader />}>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/downloads" element={<DownloadsPage />} />
-          <Route path="/library" element={<LibraryPage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/crawl" element={<CrawlPage />} />
-        </Route>
-      </Routes>
-    </Suspense>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/" element={withPageSuspense(<HomePage />)} />
+        <Route path="/search" element={withPageSuspense(<SearchPage />)} />
+        <Route path="/downloads" element={withPageSuspense(<DownloadsPage />)} />
+        <Route path="/library" element={withPageSuspense(<LibraryPage />)} />
+        <Route path="/calendar" element={withPageSuspense(<CalendarPage />)} />
+        <Route path="/anime/:subjectId" element={withPageSuspense(<AnimeDetailPage />)} />
+        <Route path="/crawl" element={withPageSuspense(<CrawlPage />)} />
+        <Route path="/watch" element={withPageSuspense(<WatchPartyPage />)} />
+        <Route path="/watch/:roomId" element={withPageSuspense(<WatchRoomPage />)} />
+      </Route>
+    </Routes>
   )
 }

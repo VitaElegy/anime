@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, Download, ExternalLink, Loader2, ArrowUpDown, CheckCircle2, XCircle, Star, Globe, Zap } from 'lucide-react'
+import { Search, Download, ExternalLink, Loader2, CheckCircle2, XCircle, Star, Globe, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { searchNyaa, searchSubsPlease, addDownload, anilistSearch, proxyImageUrl } from '@/api'
-import type { TorrentItem, SearchResult } from '@/types'
+import type { TorrentItem } from '@/types'
 import type { AniListAnime } from '@/api'
 
 type SearchMode = 'anilist' | 'torrent'

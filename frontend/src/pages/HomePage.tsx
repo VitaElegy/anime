@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { TrendingUp, Download, Search, Calendar, Terminal, Loader2 } from 'lucide-react'
+import { TrendingUp, Download, Search, Calendar, Terminal, Loader2, Tv } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { searchSubsPlease, getDownloadProgress, batchResolveCovers, proxyImageUrl } from '@/api'
+import { buildAnimeHref } from '@/lib/animeLinks'
 import type { TorrentItem, DownloadTask } from '@/types'
 import { formatBytes } from '@/lib/utils'
 
@@ -10,11 +11,13 @@ const quickLinks = [
   { to: '/search', icon: Search, label: '搜索资源', color: 'bg-accent-primary' },
   { to: '/calendar', icon: Calendar, label: '新番日历', color: 'bg-accent-secondary' },
   { to: '/downloads', icon: Download, label: '下载管理', color: 'bg-accent-cyan' },
+  { to: '/watch', icon: Tv, label: '一起看', color: 'bg-accent-primary' },
   { to: '/crawl', icon: Terminal, label: '抓取控制台', color: 'bg-accent-gold' },
 ]
 
 interface CoverInfo {
   cover_url: string
+  bangumi_id: number
   name_cn: string
   name: string
 }
@@ -46,7 +49,7 @@ export default function HomePage() {
             const map: Record<string, CoverInfo> = {}
             for (const c of covers) {
               if (c.cover_url) {
-                map[c.title] = { cover_url: c.cover_url, name_cn: c.name_cn, name: c.name }
+                map[c.title] = { cover_url: c.cover_url, bangumi_id: c.bangumi_id, name_cn: c.name_cn, name: c.name }
               }
             }
             setCoverMap(map)
@@ -77,7 +80,7 @@ export default function HomePage() {
       </div>
 
       {/* Quick Links */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {quickLinks.map((link) => (
           <Link key={link.to} to={link.to} className="card-hover flex items-center gap-3 rounded-xl bg-bg-card border border-border p-4 group">
             <div className={cn('rounded-lg p-2.5 text-white', link.color)}><link.icon className="h-5 w-5" /></div>
@@ -106,7 +109,16 @@ export default function HomePage() {
               const info = coverMap[item.title]
               const displayName = getDisplayName(item)
               return (
-                <Link to={`/search?q=${encodeURIComponent(displayName.slice(0, 20))}`} key={i} className="group">
+                <Link
+                  to={buildAnimeHref({
+                    bangumi_id: info?.bangumi_id || 0,
+                    title: displayName,
+                    raw_title: item.title,
+                    cover_url: info?.cover_url || '',
+                  })}
+                  key={i}
+                  className="group"
+                >
                   <div className="poster-card card-hover border border-border relative bg-bg-card">
                     {info?.cover_url ? (
                       <img src={proxyImageUrl(info.cover_url)} alt={displayName} loading="lazy" className="w-full h-full object-cover"
