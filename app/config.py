@@ -22,8 +22,17 @@ class Settings(BaseSettings):
     SUBSPLEASE_RSS: str = "https://subsplease.org/rss/?r=1080"
 
     # Paths
-    DOWNLOAD_DIR: Path = Path("D:/downloads/anime")
-    COVER_CACHE_DIR: Path = Path("D:/work/anime/covers")
+    # Keep defaults repo-local so a fresh Linux/Windows checkout can start
+    # without first editing absolute paths. Production should still override
+    # these via environment variables or .env.
+    DOWNLOAD_DIR: Path = Path("data/downloads")
+    COVER_CACHE_DIR: Path = Path("data/covers")
+    STREAM_CACHE_DIR: Path = Path("data/streams")
+    HLS_OUTPUT_DIR: Path = Path("data/streams/hls")
+
+    # Media tooling
+    FFMPEG_BIN: str = "ffmpeg"
+    FFPROBE_BIN: str = "ffprobe"
 
     # HTTP proxy for sites blocked by GFW (Nyaa, dmhy, etc.)
     # e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:7891"

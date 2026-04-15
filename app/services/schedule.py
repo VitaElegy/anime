@@ -1,8 +1,10 @@
-"""SubsPlease schedule scraper — fetches weekly airing schedule."""
+"""SubsPlease schedule service backed by the official JSON endpoint."""
 
 import logging
+
 import httpx
-from bs4 import BeautifulSoup
+
+from app.services import response_cache
 
 logger = logging.getLogger(__name__)
 
@@ -20,51 +22,88 @@ def _get_client() -> httpx.AsyncClient:
     return _client
 
 
-async def get_schedule() -> dict:
-    """
-    Fetch SubsPlease schedule page and parse the weekly airing table.
-    Returns: {"Monday": [...], "Tuesday": [...], ...}
-    """
+BASE_URL = "https://subsplease.org"
+
+
+async def get_schedule(tz: str = "Asia/Shanghai", force_refresh: bool = False) -> dict:
+    cache_key = response_cache.make_cache_key("subsplease.schedule", scope="weekly", tz=tz)
+
+    async def producer():
+        data = await _get_schedule_uncached(tz=tz)
+        return data or None
+
+    payload = await response_cache.get_or_set_json(
+        cache_key=cache_key,
+        cache_group="subsplease.schedule",
+        ttl_seconds=1800,
+        producer=producer,
+        force_refresh=force_refresh,
+        allow_stale=True,
+    )
+    return payload or {}
+
+
+def _absolute_url(path: str) -> str:
+    if not path:
+        return ""
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    return f"{BASE_URL}{path}" if path.startswith("/") else f"{BASE_URL}/{path.lstrip('/')}"
+
+
+async def _get_schedule_uncached(tz: str = "Asia/Shanghai") -> dict:
+    """Fetch SubsPlease weekly schedule from the official JSON API."""
     client = _get_client()
     try:
-        resp = await client.get("https://subsplease.org/schedule/")
+        resp = await client.get(
+            f"{BASE_URL}/api/",
+            params={"f": "schedule", "tz": tz},
+        )
         resp.raise_for_status()
     except httpx.HTTPError as e:
         logger.error("Failed to fetch SubsPlease schedule: %s", e)
         return {}
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    try:
+        payload = resp.json()
+    except ValueError as e:
+        logger.error("Failed to decode SubsPlease schedule JSON: %s", e)
+        return {}
+
+    raw_schedule = payload.get("schedule")
+    if not isinstance(raw_schedule, dict):
+        logger.warning("Unexpected SubsPlease schedule payload shape")
+        return {}
+
     schedule: dict[str, list[dict]] = {}
 
-    # SubsPlease schedule uses day-of-week divs
     day_map = {
         "Monday": "周一", "Tuesday": "周二", "Wednesday": "周三",
         "Thursday": "周四", "Friday": "周五", "Saturday": "周六", "Sunday": "周日",
     }
 
-    for day_div in soup.select(".day-of-week"):
-        day_name = day_div.get_text(strip=True)
+    for day_name, items in raw_schedule.items():
+        if not isinstance(items, list):
+            continue
         day_cn = day_map.get(day_name, day_name)
-        items = []
+        normalized_items = []
+        for item in items:
+            title = (item or {}).get("title", "").strip()
+            if not title:
+                continue
+            page_slug = (item or {}).get("page", "").strip()
+            image_url = (item or {}).get("image_url", "").strip()
+            normalized_items.append(
+                {
+                    "title": title,
+                    "page": f"{BASE_URL}/shows/{page_slug}" if page_slug else "",
+                    "day": day_cn,
+                    "time": (item or {}).get("time", ""),
+                    "image_url": _absolute_url(image_url),
+                }
+            )
 
-        # Items follow the day header
-        next_el = day_div.find_next_sibling()
-        while next_el and not next_el.get("class", [None]) == ["day-of-week"]:
-            if hasattr(next_el, "select"):
-                for show in next_el.select(".all-shows-link, .schedule-card, a"):
-                    title = show.get_text(strip=True)
-                    href = show.get("href", "")
-                    if title:
-                        items.append({
-                            "title": title,
-                            "page": f"https://subsplease.org{href}" if href.startswith("/") else href,
-                            "day": day_cn,
-                        })
-            next_el = next_el.find_next_sibling()
-            if next_el and "day-of-week" in (next_el.get("class") or []):
-                break
-
-        if items:
-            schedule[day_cn] = items
+        if normalized_items:
+            schedule[day_cn] = normalized_items
 
     return schedule

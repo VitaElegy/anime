@@ -9,6 +9,7 @@ import httpx
 
 from app.config import settings
 from app.models import AnimeMetadata
+from app.services import response_cache
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,28 @@ async def _rate_limit():
         _last_request_time = time.monotonic()
 
 
-async def search(keyword: str, limit: int = 25) -> list[AnimeMetadata]:
+async def search(keyword: str, limit: int = 25, force_refresh: bool = False) -> list[AnimeMetadata]:
+    cache_key = response_cache.make_cache_key(
+        "bangumi.search",
+        keyword=keyword.strip().lower(),
+        limit=limit,
+    )
+
+    async def producer():
+        return [item.model_dump(mode="json") for item in await _search_uncached(keyword, limit=limit)]
+
+    payload = await response_cache.get_or_set_json(
+        cache_key=cache_key,
+        cache_group="bangumi.search",
+        ttl_seconds=21600,
+        producer=producer,
+        force_refresh=force_refresh,
+        allow_stale=True,
+    )
+    return [AnimeMetadata.model_validate(item) for item in (payload or [])]
+
+
+async def _search_uncached(keyword: str, limit: int = 25) -> list[AnimeMetadata]:
     """
     Search Bangumi for anime by keyword.
 
@@ -82,12 +104,34 @@ async def search(keyword: str, limit: int = 25) -> list[AnimeMetadata]:
     return results
 
 
-async def get_detail(subject_id: int) -> AnimeMetadata | None:
+async def get_detail(subject_id: int, force_refresh: bool = False) -> AnimeMetadata | None:
     """Get detailed metadata for a single anime."""
-    # Check cache first
-    if subject_id in _metadata_cache:
+    if subject_id in _metadata_cache and not force_refresh:
         return _metadata_cache[subject_id]
 
+    cache_key = response_cache.make_cache_key("bangumi.detail", subject_id=subject_id)
+
+    async def producer():
+        meta = await _get_detail_uncached(subject_id)
+        return meta.model_dump(mode="json") if meta else None
+
+    payload = await response_cache.get_or_set_json(
+        cache_key=cache_key,
+        cache_group="bangumi.detail",
+        ttl_seconds=86400,
+        producer=producer,
+        force_refresh=force_refresh,
+        allow_stale=True,
+    )
+    if payload is None:
+        return None
+
+    meta = AnimeMetadata.model_validate(payload)
+    _metadata_cache[subject_id] = meta
+    return meta
+
+
+async def _get_detail_uncached(subject_id: int) -> AnimeMetadata | None:
     await _rate_limit()
     client = _get_client()
     url = f"{settings.BANGUMI_API_BASE}/v0/subjects/{subject_id}"
@@ -103,7 +147,7 @@ async def get_detail(subject_id: int) -> AnimeMetadata | None:
     images = data.get("images", {})
     cover_url = images.get("large", "") or images.get("medium", "") or images.get("small", "")
 
-    meta = AnimeMetadata(
+    return AnimeMetadata(
         id=data.get("id", subject_id),
         name_cn=data.get("name_cn", ""),
         name=data.get("name", ""),
@@ -111,9 +155,6 @@ async def get_detail(subject_id: int) -> AnimeMetadata | None:
         score=data.get("rating", {}).get("score", 0.0) if data.get("rating") else 0.0,
         cover_url=cover_url,
     )
-
-    _metadata_cache[subject_id] = meta
-    return meta
 
 
 async def get_cover(subject_id: int) -> Path | None:

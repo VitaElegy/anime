@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 
 from app.config import settings
 from app.models import SearchResult, TorrentItem
+from app.services import response_cache
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,36 @@ async def search_html(
     page: int = 1,
     filter_: int = 0,
     category: str = "1_0",
+    force_refresh: bool = False,
+) -> SearchResult:
+    cache_key = response_cache.make_cache_key(
+        "nyaa.search_html",
+        keyword=keyword.strip().lower(),
+        page=page,
+        filter_=filter_,
+        category=category,
+    )
+
+    async def producer():
+        result = await _search_html_uncached(keyword, page=page, filter_=filter_, category=category)
+        return result.model_dump(mode="json")
+
+    payload = await response_cache.get_or_set_json(
+        cache_key=cache_key,
+        cache_group="nyaa.search_html",
+        ttl_seconds=900,
+        producer=producer,
+        force_refresh=force_refresh,
+        allow_stale=True,
+    )
+    return SearchResult.model_validate(payload or {"items": [], "total": 0, "source": "nyaa"})
+
+
+async def _search_html_uncached(
+    keyword: str,
+    page: int = 1,
+    filter_: int = 0,
+    category: str = "1_0",
 ) -> SearchResult:
     """
     Search Nyaa via HTML scraping.
@@ -87,7 +118,7 @@ async def search_html(
         resp.raise_for_status()
     except httpx.HTTPError as e:
         logger.warning("Nyaa HTML request failed: %s — falling back to RSS", e)
-        return await search_rss(keyword, category)
+        return await _search_rss_uncached(keyword, category)
 
     soup = BeautifulSoup(resp.text, "html.parser")
     items: list[TorrentItem] = []
@@ -95,7 +126,7 @@ async def search_html(
     table = soup.select_one("table.torrent-list tbody")
     if not table:
         logger.warning("No torrent table found on page, trying RSS fallback")
-        return await search_rss(keyword, category)
+        return await _search_rss_uncached(keyword, category)
 
     for row in table.select("tr"):
         cols = row.select("td")
@@ -143,6 +174,32 @@ async def search_html(
 
 
 async def search_rss(
+    keyword: str,
+    category: str = "1_0",
+    force_refresh: bool = False,
+) -> SearchResult:
+    cache_key = response_cache.make_cache_key(
+        "nyaa.search_rss",
+        keyword=keyword.strip().lower(),
+        category=category,
+    )
+
+    async def producer():
+        result = await _search_rss_uncached(keyword, category=category)
+        return result.model_dump(mode="json")
+
+    payload = await response_cache.get_or_set_json(
+        cache_key=cache_key,
+        cache_group="nyaa.search_rss",
+        ttl_seconds=900,
+        producer=producer,
+        force_refresh=force_refresh,
+        allow_stale=True,
+    )
+    return SearchResult.model_validate(payload or {"items": [], "total": 0, "source": "nyaa"})
+
+
+async def _search_rss_uncached(
     keyword: str,
     category: str = "1_0",
 ) -> SearchResult:

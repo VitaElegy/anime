@@ -4,6 +4,8 @@ import logging
 
 import httpx
 
+from app.services import response_cache
+
 logger = logging.getLogger(__name__)
 
 ANILIST_URL = "https://graphql.anilist.co"
@@ -114,13 +116,35 @@ def _format_anime(media: dict) -> dict:
     }
 
 
-async def search(keyword: str, page: int = 1, per_page: int = 20) -> dict:
+async def search(keyword: str, page: int = 1, per_page: int = 20, force_refresh: bool = False) -> dict:
     """
     Search anime on AniList.
     AniList supports Chinese (full titles like '葬送的芙莉莲'), Japanese, and English.
     For partial Chinese names (like '芙莉莲') that AniList can't match,
     we fallback to Bangumi to get the full Japanese title and retry.
     """
+    cache_key = response_cache.make_cache_key(
+        "anilist.search",
+        keyword=keyword.strip().lower(),
+        page=page,
+        per_page=per_page,
+    )
+
+    async def producer():
+        return await _search_uncached(keyword, page=page, per_page=per_page)
+
+    return await response_cache.get_or_set_json(
+        cache_key=cache_key,
+        cache_group="anilist.search",
+        ttl_seconds=21600,
+        producer=producer,
+        force_refresh=force_refresh,
+        allow_stale=True,
+    )
+
+
+async def _search_uncached(keyword: str, page: int = 1, per_page: int = 20) -> dict:
+    """Raw AniList search with Bangumi fallback."""
     import re
 
     result = await _do_search(keyword, page, per_page)
@@ -173,8 +197,37 @@ async def _do_search(keyword: str, page: int = 1, per_page: int = 20) -> dict:
         return {"items": [], "total": 0, "has_next": False, "source": "anilist"}
 
 
-async def get_trending(season: str = "", year: int = 0, page: int = 1, per_page: int = 20) -> dict:
+async def get_trending(
+    season: str = "",
+    year: int = 0,
+    page: int = 1,
+    per_page: int = 20,
+    force_refresh: bool = False,
+) -> dict:
     """Get currently trending anime."""
+    cache_key = response_cache.make_cache_key(
+        "anilist.trending",
+        season=season.upper(),
+        year=year,
+        page=page,
+        per_page=per_page,
+    )
+
+    async def producer():
+        return await _get_trending_uncached(season=season, year=year, page=page, per_page=per_page)
+
+    return await response_cache.get_or_set_json(
+        cache_key=cache_key,
+        cache_group="anilist.trending",
+        ttl_seconds=1800,
+        producer=producer,
+        force_refresh=force_refresh,
+        allow_stale=True,
+    )
+
+
+async def _get_trending_uncached(season: str = "", year: int = 0, page: int = 1, per_page: int = 20) -> dict:
+    """Fetch trending anime from AniList."""
     client = _get_client()
     variables: dict = {"page": page, "perPage": per_page}
     if season:
@@ -200,8 +253,29 @@ async def get_trending(season: str = "", year: int = 0, page: int = 1, per_page:
         return {"items": [], "total": 0, "source": "anilist"}
 
 
-async def get_airing_schedule(page: int = 1, per_page: int = 50) -> dict:
+async def get_airing_schedule(page: int = 1, per_page: int = 50, force_refresh: bool = False) -> dict:
     """Get upcoming airing schedule."""
+    cache_key = response_cache.make_cache_key(
+        "anilist.schedule",
+        page=page,
+        per_page=per_page,
+    )
+
+    async def producer():
+        return await _get_airing_schedule_uncached(page=page, per_page=per_page)
+
+    return await response_cache.get_or_set_json(
+        cache_key=cache_key,
+        cache_group="anilist.schedule",
+        ttl_seconds=900,
+        producer=producer,
+        force_refresh=force_refresh,
+        allow_stale=True,
+    )
+
+
+async def _get_airing_schedule_uncached(page: int = 1, per_page: int = 50) -> dict:
+    """Fetch upcoming airing schedule."""
     client = _get_client()
     try:
         resp = await client.post(ANILIST_URL, json={

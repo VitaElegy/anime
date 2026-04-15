@@ -7,6 +7,7 @@ import httpx
 
 from app.config import settings
 from app.models import SearchResult, TorrentItem
+from app.services import response_cache
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,32 @@ def _get_client() -> httpx.AsyncClient:
 
 
 async def search(
+    keyword: str = "",
+    quality: int = 1080,
+    force_refresh: bool = False,
+) -> SearchResult:
+    cache_key = response_cache.make_cache_key(
+        "subsplease.search",
+        keyword=keyword.strip().lower(),
+        quality=quality,
+    )
+    ttl_seconds = 300 if not keyword else 900
+
+    async def producer():
+        return (await _search_uncached(keyword=keyword, quality=quality)).model_dump(mode="json")
+
+    payload = await response_cache.get_or_set_json(
+        cache_key=cache_key,
+        cache_group="subsplease.search",
+        ttl_seconds=ttl_seconds,
+        producer=producer,
+        force_refresh=force_refresh,
+        allow_stale=True,
+    )
+    return SearchResult.model_validate(payload or {"items": [], "total": 0, "source": "subsplease"})
+
+
+async def _search_uncached(
     keyword: str = "",
     quality: int = 1080,
 ) -> SearchResult:

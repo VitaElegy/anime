@@ -1,8 +1,9 @@
 """Favorites & tracking routes."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from app.dependencies.auth import get_current_user
 from app.services import database as db
 
 router = APIRouter()
@@ -25,13 +26,17 @@ class FavoriteUpdate(BaseModel):
 
 
 @router.get("", summary="List all favorites")
-async def list_favorites(status: str = Query("", description="Filter by status: watching, completed, dropped, planned")):
-    return db.get_favorites(status)
+async def list_favorites(
+    status: str = Query("", description="Filter by status: watching, completed, dropped, planned"),
+    user: dict = Depends(get_current_user),
+):
+    return db.get_user_favorites(int(user["id"]), status)
 
 
 @router.post("", summary="Add to favorites")
-async def add_favorite(req: FavoriteRequest):
-    return db.add_favorite(
+async def add_favorite(req: FavoriteRequest, user: dict = Depends(get_current_user)):
+    return db.add_user_favorite(
+        user_id=int(user["id"]),
         bangumi_id=req.bangumi_id,
         name_cn=req.name_cn,
         name=req.name,
@@ -41,25 +46,25 @@ async def add_favorite(req: FavoriteRequest):
 
 
 @router.get("/{bangumi_id}", summary="Get favorite detail")
-async def get_favorite(bangumi_id: int):
-    fav = db.get_favorite(bangumi_id)
+async def get_favorite(bangumi_id: int, user: dict = Depends(get_current_user)):
+    fav = db.get_user_favorite(int(user["id"]), bangumi_id)
     if not fav:
         raise HTTPException(status_code=404, detail="Not in favorites")
     return fav
 
 
 @router.put("/{bangumi_id}", summary="Update favorite status/progress")
-async def update_favorite(bangumi_id: int, req: FavoriteUpdate):
+async def update_favorite(bangumi_id: int, req: FavoriteUpdate, user: dict = Depends(get_current_user)):
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
-    result = db.update_favorite(bangumi_id, **updates)
+    result = db.update_user_favorite(int(user["id"]), bangumi_id, **updates)
     if not result:
         raise HTTPException(status_code=404, detail="Not in favorites")
     return result
 
 
 @router.delete("/{bangumi_id}", summary="Remove from favorites")
-async def remove_favorite(bangumi_id: int):
-    ok = db.remove_favorite(bangumi_id)
+async def remove_favorite(bangumi_id: int, user: dict = Depends(get_current_user)):
+    ok = db.remove_user_favorite(int(user["id"]), bangumi_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Not in favorites")
     return {"status": "ok"}

@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 .env
+.venv/
 *.db
 
 # Node
@@ -16,6 +17,7 @@ frontend/dist/
 # Covers cache
 covers/
 !covers/.gitkeep
+data/
 
 # OS
 Thumbs.db
