@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>NicoTracker 播放自检</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 24px;
+        font: 14px/1.5 -apple-system, Segoe UI, sans-serif;
+        background: #0a0a0f; color: #e2e2e7;
+        max-width: 960px; margin-inline: auto;
+      }
+      h1 { font-size: 1.5rem; margin: 0 0 20px; }
+      section { margin-bottom: 32px; padding: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; }
+      h2 { font-size: 1rem; margin: 0 0 12px; color: #7dd3fc; }
+      video { width: 100%; max-height: 480px; background: #000; border-radius: 8px; }
+      pre { white-space: pre-wrap; word-break: break-all; background: rgba(0,0,0,.3); padding: 12px; border-radius: 8px; font-size: 12px; max-height: 220px; overflow: auto; }
+      .ok { color: #4ade80; }
+      .err { color: #f87171; }
+      .warn { color: #fbbf24; }
+      button { background: #2563eb; color: white; border: 0; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+      button:hover { background: #1d4ed8; }
+    </style>
+  </head>
+  <body>
+    <h1>🎬 NicoTracker 播放自检</h1>
+
+    <section>
+      <h2>1. 后端元数据（直连 /api/media）</h2>
+      <pre id="meta">加载中...</pre>
+    </section>
+
+    <section>
+      <h2>2. 媒体探测字段</h2>
+      <pre id="probe">加载中...</pre>
+    </section>
+
+    <section>
+      <h2>3. HTTP Range 握手测试</h2>
+      <pre id="range">加载中...</pre>
+    </section>
+
+    <section>
+      <h2>4. 原生 &lt;video&gt; 直接播放（不走 React）</h2>
+      <video id="player" controls playsinline preload="metadata"></video>
+      <pre id="videoLog">等待视频事件...</pre>
+      <p>
+        <button id="reload">重新加载视频</button>
+        <button id="forcePlay">强制 play()</button>
+      </p>
+    </section>
+
+    <script>
+      const MEDIA_ID = 'cf6145e47f58da84a7d35ade8fbf01ea'
+      const streamUrl = `/api/media/${MEDIA_ID}/stream`
+      const metaUrl = `/api/media/${MEDIA_ID}`
+
+      const $meta = document.getElementById('meta')
+      const $probe = document.getElementById('probe')
+      const $range = document.getElementById('range')
+      const $videoLog = document.getElementById('videoLog')
+      const player = document.getElementById('player')
+
+      function log(target, cls, text) {
+        const line = document.createElement('div')
+        line.className = cls || ''
+        line.textContent = text
+        target.appendChild(line)
+      }
+
+      ;(async () => {
+        // 1. metadata
+        try {
+          const r = await fetch(metaUrl)
+          const txt = await r.text()
+          $meta.textContent = `HTTP ${r.status}\n` + txt
+          const j = JSON.parse(txt)
+          const bad = []
+          if (j.probe_status !== 'ready') bad.push('probe_status=' + j.probe_status)
+          if (!j.watch_enabled) bad.push('watch_enabled=false')
+          if (!j.direct_play_supported) bad.push('direct_play_supported=false')
+          if (j.last_error) bad.push('last_error=' + j.last_error)
+          if (j.watch_block_reason) bad.push('watch_block_reason=' + j.watch_block_reason)
+          $probe.innerHTML = ''
+          if (bad.length === 0) {
+            log($probe, 'ok', '✓ 所有播放前置条件都 OK')
+            log($probe, '', `video_codecs=${JSON.stringify(j.video_codecs)} audio_codecs=${JSON.stringify(j.audio_codecs)} duration=${j.duration}s`)
+          } else {
+            bad.forEach((b) => log($probe, 'err', '✗ ' + b))
+          }
+        } catch (e) {
+          $meta.textContent = 'ERR: ' + e.message
+          $meta.className = 'err'
+        }
+
+        // 2. Range handshake
+        try {
+          const r = await fetch(streamUrl, { headers: { Range: 'bytes=0-1023' } })
+          const ab = await r.arrayBuffer()
+          const head = new Uint8Array(ab).slice(4, 12)
+          const sig = Array.from(head).map(b => String.fromCharCode(b)).join('')
+          $range.innerHTML = ''
+          log($range, r.status === 206 ? 'ok' : 'warn', `status = ${r.status}`)
+          log($range, '', `Content-Type   = ${r.headers.get('content-type')}`)
+          log($range, '', `Content-Range  = ${r.headers.get('content-range')}`)
+          log($range, '', `Content-Length = ${r.headers.get('content-length')}`)
+          log($range, '', `bytes received = ${ab.byteLength}`)
+          log($range, sig.includes('ftyp') ? 'ok' : 'err', `box signature  = "${sig}" ${sig.includes('ftyp') ? '(ok: MP4 ftyp)' : '(expected ftyp)'}`)
+        } catch (e) {
+          $range.textContent = 'ERR: ' + e.message
+        }
+
+        // 3. <video>
+        attachVideo()
+      })()
+
+      function attachVideo() {
+        $videoLog.textContent = ''
+        ;['loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough', 'playing', 'pause', 'waiting', 'stalled', 'suspend', 'error', 'abort'].forEach((ev) => {
+          player.addEventListener(ev, () => {
+            const line = `[${new Date().toISOString().slice(11, 19)}] ${ev}`
+            if (ev === 'error' && player.error) {
+              log($videoLog, 'err', `${line} code=${player.error.code} message=${player.error.message || '(no message)'}`)
+            } else if (ev === 'loadedmetadata') {
+              log($videoLog, 'ok', `${line} duration=${player.duration}s videoW=${player.videoWidth} videoH=${player.videoHeight}`)
+            } else if (ev === 'playing') {
+              log($videoLog, 'ok', line)
+            } else {
+              log($videoLog, '', line)
+            }
+          })
+        })
+        player.src = streamUrl
+      }
+
+      document.getElementById('reload').addEventListener('click', () => {
+        $videoLog.textContent = ''
+        player.src = ''
+        setTimeout(() => attachVideo(), 100)
+      })
+      document.getElementById('forcePlay').addEventListener('click', () => {
+        player.play().then(() => log($videoLog, 'ok', 'play() promise resolved')).catch((e) => log($videoLog, 'err', 'play() rejected: ' + e.message))
+      })
+    </script>
+  </body>
+</html>

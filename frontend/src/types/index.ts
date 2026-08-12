@@ -7,6 +7,10 @@ export interface TorrentItem {
   leechers: number
   date: string
   source: string
+  info_hash?: string
+  fansub?: string
+  publisher?: string
+  detail_url?: string
 }
 
 export interface SearchResult {
@@ -40,6 +44,52 @@ export interface AnimeMetadata {
   score: number
   cover_url: string
   cover_local: string
+}
+
+export interface StaffMember {
+  role: string
+  name: string
+}
+
+export interface ThemeSong {
+  kind: string
+  title: string
+  artist: string
+  episodes?: string
+}
+
+export interface StreamingLink {
+  platform: string
+  title: string
+  url: string
+  season_id: string
+  cover_url: string
+  score: number
+  total_episodes: number
+  is_finished: boolean
+  is_paid: boolean
+  paid_note: string
+}
+
+export interface AnimeMetadataFull {
+  id: number
+  name_cn: string
+  name: string
+  summary: string
+  score: number
+  score_count: number
+  rank: number
+  cover_url: string
+  air_date: string
+  air_weekday: string
+  total_episodes: number
+  tags: string[]
+  meta_tags: string[]
+  staff: StaffMember[]
+  theme_songs: ThemeSong[]
+  streaming_links: StreamingLink[]
+  official_site: string
+  aliases: string[]
 }
 
 export interface UserPublic {
@@ -116,9 +166,10 @@ export interface MediaAsset {
   recommended_mode: 'direct_play' | 'pretranscode_hls' | 'blocked'
   watch_enabled: boolean
   watch_block_reason: string
-  hls_status: 'missing' | 'preparing' | 'ready' | 'error'
+  hls_status: 'missing' | 'queued' | 'preparing' | 'ready' | 'error'
   hls_playlist: string
   hls_updated_at: number
+  hls_progress: number
   last_error: string
 }
 

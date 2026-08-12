@@ -16,10 +16,10 @@ const statusLabels: Record<string, string> = {
 }
 
 const statusColors: Record<string, string> = {
-  watching: 'bg-accent-cyan/10 text-accent-cyan',
-  completed: 'bg-success/10 text-success',
-  dropped: 'bg-danger/10 text-danger',
-  planned: 'bg-accent-gold/10 text-accent-gold',
+  watching: 'bg-accent-cyan/20 text-accent-cyan ring-accent-cyan/30',
+  completed: 'bg-success/20 text-success ring-success/30',
+  dropped: 'bg-danger/20 text-danger ring-danger/30',
+  planned: 'bg-accent-gold/20 text-accent-gold ring-accent-gold/30',
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -157,159 +157,175 @@ export default function LibraryPage() {
   ]
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start gap-2 rounded-xl bg-accent-cyan/10 px-4 py-3 text-sm text-accent-cyan">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-        <div>
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex items-start gap-4 rounded-2xl border border-accent-cyan/20 bg-accent-cyan/10 px-6 py-5 text-sm text-accent-cyan shadow-lg backdrop-blur-md">
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+        <div className="space-y-1.5">
           {isAuthenticated && user ? (
             <>
-              <p className="font-medium">当前账号：{user.username}</p>
-              <p className="mt-1">现在开始，收藏已经按账号隔离。你可以继续把旧的共享收藏导入到自己的账号里。</p>
+              <p className="text-base font-bold text-white tracking-wide">当前账号：{user.username}</p>
+              <p className="text-accent-cyan/80 leading-relaxed">现在开始，收藏已经按账号隔离。你可以继续把旧的共享收藏导入到自己的账号里。</p>
             </>
           ) : (
             <>
-              <p className="font-medium">个人收藏已经上线</p>
-              <p className="mt-1">登录后，收藏会绑定到你的账号，不再和其他访问者共享。旧的共享收藏也可以一键导入。</p>
+              <p className="text-base font-bold text-white tracking-wide">个人收藏已经上线</p>
+              <p className="text-accent-cyan/80 leading-relaxed">登录后，收藏会绑定到你的账号，不再和其他访问者共享。旧的共享收藏也可以一键导入。</p>
             </>
           )}
         </div>
       </div>
 
       {message && (
-        <div className={cn('rounded-xl px-4 py-3 text-sm', messageTone === 'error' ? 'bg-danger/8 text-danger' : 'bg-accent-cyan/10 text-accent-cyan')}>
+        <div className={cn('rounded-2xl border px-6 py-4 text-sm font-medium shadow-lg backdrop-blur-md animate-in slide-in-from-top-2', messageTone === 'error' ? 'border-danger/20 bg-danger/10 text-danger shadow-danger/10' : 'border-accent-cyan/20 bg-accent-cyan/10 text-accent-cyan shadow-accent-cyan/10')}>
           {message}
         </div>
       )}
 
-      <div className="flex items-center gap-6">
-        <div className="flex gap-4 border-b border-border">
+      <div className="flex flex-wrap items-center justify-between gap-6 rounded-2xl border border-white/5 bg-white/[0.02] p-4 shadow-sm backdrop-blur-sm">
+        <div className="flex gap-2 p-1 rounded-xl bg-black/20">
           {tabs.map((item) => (
             <button
               key={item.key}
               onClick={() => setTab(item.key)}
               className={cn(
-                'border-b-2 pb-2 text-sm font-medium transition-colors',
+                'rounded-lg px-6 py-2.5 text-sm font-bold transition-all duration-300',
                 tab === item.key
-                  ? 'border-accent-primary text-accent-primary'
-                  : 'border-transparent text-text-muted hover:text-text-secondary'
+                  ? 'bg-gradient-to-r from-accent-primary to-accent-secondary text-white shadow-md shadow-accent-primary/20'
+                  : 'text-text-muted hover:text-white hover:bg-white/5'
               )}
             >
               {item.label}
             </button>
           ))}
         </div>
-        <form onSubmit={handleSubmit} className="flex max-w-md flex-1 gap-3">
+        <form onSubmit={handleSubmit} className="flex w-full max-w-md gap-3 sm:w-auto">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <input
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索 Bangumi..."
               className={cn(
-                'w-full rounded-xl border border-border bg-bg-card py-2 pl-10 pr-4 text-sm',
-                'focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary/50'
+                'w-full rounded-xl border border-white/10 bg-black/20 py-2.5 pl-11 pr-4 text-sm font-medium text-white transition-all',
+                'focus:border-accent-primary focus:bg-white/5 focus:outline-none focus:ring-2 focus:ring-accent-primary/30 placeholder-text-muted/50'
               )}
             />
           </div>
-          <button type="submit" className="rounded-xl bg-accent-secondary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-secondary/90">
+          <button type="submit" className="rounded-xl bg-white/10 px-6 py-2.5 text-sm font-bold text-white transition-all hover:bg-white/20 hover:shadow-lg border border-white/5">
             搜索
           </button>
         </form>
       </div>
 
       {selectedAnime && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setSelectedAnime(null)}>
-          <div className="relative max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-bg-secondary p-6" onClick={(event) => event.stopPropagation()}>
-            <div className="flex gap-6">
-              <img
-                src={getCoverUrl(selectedAnime.id)}
-                alt={selectedAnime.name_cn || selectedAnime.name}
-                className="h-64 w-44 shrink-0 rounded-xl object-cover"
-                onError={(event) => {
-                  (event.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 256"><rect fill="%231a1a2e" width="176" height="256"/><text x="88" y="128" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>'
-                }}
-              />
-              <div className="flex-1 space-y-3">
-                <h2 className="text-xl font-bold">{selectedAnime.name_cn || selectedAnime.name}</h2>
-                {selectedAnime.name_cn && <p className="text-sm text-text-secondary">{selectedAnime.name}</p>}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl animate-in fade-in duration-300" onClick={() => setSelectedAnime(null)}>
+          <div className="relative max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/10 bg-bg-primary/90 p-8 shadow-2xl animate-in zoom-in-95" onClick={(event) => event.stopPropagation()}>
+            <div className="flex flex-col gap-8 md:flex-row">
+              <div className="shrink-0 group overflow-hidden rounded-2xl border border-white/10 shadow-2xl">
+                <img
+                  src={getCoverUrl(selectedAnime.id)}
+                  alt={selectedAnime.name_cn || selectedAnime.name}
+                  className="h-[360px] w-60 object-cover transition-transform duration-700 group-hover:scale-105"
+                  onError={(event) => {
+                    (event.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect fill="%231a1a2e" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>'
+                  }}
+                />
+              </div>
+              <div className="flex-1 space-y-6">
+                <div className="space-y-2">
+                  <h2 className="text-3xl font-black text-white drop-shadow-sm">{selectedAnime.name_cn || selectedAnime.name}</h2>
+                  {selectedAnime.name_cn && <p className="text-base font-medium text-text-secondary">{selectedAnime.name}</p>}
+                </div>
+                
                 {selectedAnime.score > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <Star className="h-4 w-4 fill-accent-gold text-accent-gold" />
-                    <span className="text-sm font-medium">{selectedAnime.score}</span>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-accent-gold/20 bg-accent-gold/10 px-4 py-1.5 backdrop-blur-md">
+                    <Star className="h-5 w-5 fill-accent-gold text-accent-gold drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]" />
+                    <span className="text-base font-bold text-accent-gold">{selectedAnime.score.toFixed(1)}</span>
                   </div>
                 )}
-                <p className="text-sm leading-relaxed text-text-secondary">{selectedAnime.summary || '暂无简介'}</p>
+                
+                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5 shadow-inner">
+                  <p className="text-sm leading-loose text-text-secondary">{selectedAnime.summary || '暂无简介'}</p>
+                </div>
+                
                 <button
                   onClick={() => void toggleFavorite(selectedAnime)}
                   className={cn(
-                    'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors',
-                    favSet.has(selectedAnime.id) ? 'bg-danger/10 text-danger' : 'bg-accent-primary/10 text-accent-primary'
+                    'flex items-center gap-3 rounded-xl px-8 py-3.5 text-base font-bold transition-all duration-300 shadow-lg',
+                    favSet.has(selectedAnime.id) 
+                      ? 'border border-danger/30 bg-danger/20 text-danger hover:bg-danger/30 hover:scale-105' 
+                      : 'bg-gradient-to-r from-accent-primary to-accent-secondary text-white hover:scale-105 hover:shadow-accent-primary/20'
                   )}
                 >
-                  <Heart className={cn('h-4 w-4', favSet.has(selectedAnime.id) && 'fill-current')} />
+                  <Heart className={cn('h-5 w-5 transition-transform duration-300', favSet.has(selectedAnime.id) && 'scale-110 fill-current')} />
                   {!isAuthenticated ? '登录后收藏' : favSet.has(selectedAnime.id) ? '取消收藏' : '加入收藏'}
                 </button>
               </div>
             </div>
-            <button onClick={() => setSelectedAnime(null)} className="absolute right-4 top-4 rounded-lg p-1 text-text-muted hover:text-text-primary">✕</button>
+            <button onClick={() => setSelectedAnime(null)} className="absolute right-6 top-6 rounded-full bg-white/5 p-2 text-text-muted transition-colors hover:bg-white/10 hover:text-white">✕</button>
           </div>
         </div>
       )}
 
       {tab === 'favorites' ? (
         authLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-accent-primary" />
+          <div className="flex items-center justify-center py-32">
+            <div className="relative">
+              <Loader2 className="h-12 w-12 animate-spin text-accent-primary" />
+              <div className="absolute inset-0 animate-pulse rounded-full bg-accent-primary opacity-50 blur-xl"></div>
+            </div>
           </div>
         ) : !isAuthenticated ? (
-          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
             <AuthPanel />
-            <div className="rounded-2xl border border-border bg-bg-card p-6">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-accent-gold" />
-                <h2 className="text-lg font-semibold">登录后会得到什么</h2>
+            <div className="flex flex-col justify-center rounded-3xl border border-white/5 bg-gradient-to-br from-white/[0.05] to-transparent p-10 shadow-2xl backdrop-blur-sm">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-accent-gold/20 p-2.5 border border-accent-gold/30">
+                  <Sparkles className="h-6 w-6 text-accent-gold drop-shadow-[0_0_8px_rgba(255,215,0,0.8)]" />
+                </div>
+                <h2 className="text-2xl font-bold text-white tracking-wide">登录后会得到什么</h2>
               </div>
-              <div className="mt-4 space-y-3 text-sm text-text-secondary">
-                <p>收藏将只属于当前账号，不再和其他访问者混在一起。</p>
-                <p>旧的共享收藏可以一键导入，不需要重新手动逐个点一遍。</p>
-                <p>后续如果继续推进，我们也可以把观看记录、订阅和下载偏好一起挂到账号上。</p>
+              <div className="mt-8 space-y-5 text-base text-text-secondary">
+                <p className="flex items-center gap-3"><span className="h-2 w-2 rounded-full bg-accent-primary shrink-0 shadow-[0_0_8px_rgba(233,69,96,0.8)]" /> 收藏将只属于当前账号，不再和其他访问者混在一起。</p>
+                <p className="flex items-center gap-3"><span className="h-2 w-2 rounded-full bg-accent-secondary shrink-0 shadow-[0_0_8px_rgba(15,52,96,0.8)]" /> 旧的共享收藏可以一键导入，不需要重新手动逐个点一遍。</p>
+                <p className="flex items-center gap-3"><span className="h-2 w-2 rounded-full bg-accent-cyan shrink-0 shadow-[0_0_8px_rgba(0,255,255,0.8)]" /> 后续如果继续推进，我们也可以把观看记录、订阅和下载偏好一起挂到账号上。</p>
               </div>
             </div>
           </div>
         ) : favorites.length === 0 ? (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-bg-card p-5">
+          <div className="space-y-8">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-accent-primary/20 bg-accent-primary/5 p-6 shadow-lg backdrop-blur-sm">
               <div>
-                <p className="text-sm font-medium text-text-primary">旧共享收藏还在</p>
-                <p className="mt-1 text-sm text-text-secondary">如果你之前已经积累了一批共享收藏，可以把它们导入到当前账号。</p>
+                <p className="text-lg font-bold text-white tracking-wide">旧共享收藏还在</p>
+                <p className="mt-1 text-sm font-medium text-text-secondary">如果你之前已经积累了一批共享收藏，可以把它们导入到当前账号。</p>
               </div>
               <button
                 onClick={() => void handleImportLegacy()}
                 disabled={importing}
-                className="rounded-lg bg-accent-primary px-3 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 disabled:opacity-60"
+                className="rounded-xl bg-gradient-to-r from-accent-primary to-accent-secondary px-6 py-3 text-sm font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-accent-primary/30 disabled:opacity-50 disabled:hover:scale-100"
               >
                 {importing ? '导入中...' : '导入旧共享收藏'}
               </button>
             </div>
 
-            <div className="py-20 text-center text-text-muted">
-              <BookOpen className="mx-auto mb-3 h-12 w-12 opacity-30" />
-              <p>这个账号还没有收藏番剧</p>
-              <p className="mt-1 text-xs">切换到「搜索番剧」添加一部，或者先导入旧共享收藏。</p>
+            <div className="rounded-3xl border border-white/5 bg-white/[0.01] py-32 text-center shadow-inner">
+              <BookOpen className="mx-auto mb-6 h-16 w-16 text-text-muted opacity-20" />
+              <p className="text-xl font-bold text-white tracking-wide">这个账号还没有收藏番剧</p>
+              <p className="mt-3 text-sm font-medium text-text-muted">切换到「搜索番剧」添加一部，或者先导入旧共享收藏。</p>
             </div>
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-bg-card p-5">
+          <div className="space-y-8">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/5 bg-white/[0.02] p-6 shadow-sm backdrop-blur-sm">
               <div>
-                <p className="text-sm font-medium text-text-primary">当前账号：{user?.username}</p>
-                <p className="mt-1 text-sm text-text-secondary">下面这些收藏现在只对你自己可见。</p>
+                <p className="text-lg font-bold text-white tracking-wide">我的收藏库</p>
+                <p className="mt-1 text-sm font-medium text-text-secondary">下面这些收藏现在只对你自己可见。</p>
               </div>
               <button
                 onClick={() => void handleImportLegacy()}
                 disabled={importing}
-                className="rounded-lg bg-bg-secondary px-3 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-60"
+                className="rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-bold text-white transition-all hover:bg-white/10 hover:shadow-md disabled:opacity-50"
               >
                 {importing ? '导入中...' : '导入旧共享收藏'}
               </button>
@@ -324,16 +340,17 @@ export default function LibraryPage() {
                     setSelectedAnime({ id: fav.bangumi_id, name_cn: fav.name_cn, name: fav.name, cover_url: fav.cover_url, score: fav.score, summary: '', cover_local: '' })
                   }}
                 >
-                  <div className="poster-card card-hover relative border border-border">
+                  <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-white/10 bg-bg-secondary shadow-lg transition-all duration-500 group-hover:-translate-y-2 group-hover:border-white/20 group-hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
                     <img
                       src={getCoverUrl(fav.bangumi_id)}
                       alt={fav.name_cn || fav.name}
                       loading="lazy"
+                      className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
                       onError={(event) => {
                         (event.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect fill="%231a1a2e" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>'
                       }}
                     />
-                    <div className="absolute left-2 top-2">
+                    <div className="absolute left-2 top-2 z-10">
                       <select
                         value={fav.status}
                         onChange={(event) => {
@@ -341,22 +358,25 @@ export default function LibraryPage() {
                           void handleStatusChange(fav.bangumi_id, event.target.value)
                         }}
                         onClick={(event) => event.stopPropagation()}
-                        className={cn('cursor-pointer rounded-md border-0 px-1.5 py-0.5 text-[10px] font-medium backdrop-blur-sm', statusColors[fav.status] || 'bg-bg-card/80 text-text-muted')}
+                        className={cn('cursor-pointer rounded-lg border-0 px-2.5 py-1 text-xs font-bold ring-1 backdrop-blur-md transition-all hover:brightness-110 focus:ring-2', statusColors[fav.status] || 'bg-black/60 text-white ring-white/20')}
                       >
                         {Object.entries(statusLabels).map(([key, label]) => (
-                          <option key={key} value={key}>{label}</option>
+                          <option key={key} value={key} className="bg-bg-primary text-white">{label}</option>
                         ))}
                       </select>
                     </div>
                     {fav.score > 0 && (
-                      <div className="absolute right-2 top-2 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-xs font-medium text-accent-gold backdrop-blur-sm">
-                        <Star className="h-3 w-3 fill-accent-gold" />
-                        {fav.score}
+                      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-lg border border-accent-gold/20 bg-black/60 px-2 py-1 text-xs font-bold text-accent-gold shadow-sm backdrop-blur-md">
+                        <Star className="h-3.5 w-3.5 fill-accent-gold drop-shadow-[0_0_5px_rgba(255,215,0,0.8)]" />
+                        {fav.score.toFixed(1)}
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-60 transition-opacity duration-300 group-hover:opacity-80" />
+                    <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0 translate-y-2">
+                       <p className="text-center text-xs font-bold text-white bg-white/10 backdrop-blur-md border border-white/20 rounded-lg py-1.5 shadow-lg">查看详情</p>
+                    </div>
                   </div>
-                  <p className="mt-2 truncate text-xs font-medium text-text-secondary transition-colors group-hover:text-text-primary">
+                  <p className="mt-3 truncate text-sm font-bold text-white transition-colors group-hover:text-accent-primary px-1">
                     {fav.name_cn || fav.name}
                   </p>
                 </div>
@@ -366,47 +386,53 @@ export default function LibraryPage() {
         )
       ) : (
         loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-accent-primary" />
+          <div className="flex items-center justify-center py-32">
+            <div className="relative">
+              <Loader2 className="h-12 w-12 animate-spin text-accent-primary" />
+              <div className="absolute inset-0 animate-pulse rounded-full bg-accent-primary opacity-50 blur-xl"></div>
+            </div>
           </div>
         ) : animes.length > 0 ? (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {animes.map((anime) => (
               <div key={anime.id} className="group cursor-pointer" onClick={() => setSelectedAnime(anime)}>
-                <div className="poster-card card-hover relative border border-border">
+                <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-white/10 bg-bg-secondary shadow-lg transition-all duration-500 group-hover:-translate-y-2 group-hover:border-white/20 group-hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
                   <img
                     src={getCoverUrl(anime.id)}
                     alt={anime.name_cn || anime.name}
                     loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
                     onError={(event) => {
                       (event.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect fill="%231a1a2e" width="200" height="300"/><text x="100" y="150" text-anchor="middle" fill="%2364748b" font-size="14">No Cover</text></svg>'
                     }}
                   />
                   {favSet.has(anime.id) && (
-                    <div className="absolute left-2 top-2">
-                      <Heart className="h-4 w-4 fill-accent-primary text-accent-primary drop-shadow" />
+                    <div className="absolute left-2 top-2 z-10 rounded-full bg-black/40 p-1.5 backdrop-blur-md">
+                      <Heart className="h-4 w-4 fill-accent-primary text-accent-primary drop-shadow-[0_0_8px_rgba(233,69,96,0.8)]" />
                     </div>
                   )}
                   {anime.score > 0 && (
-                    <div className="absolute right-2 top-2 flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-xs font-medium text-accent-gold backdrop-blur-sm">
-                      <Star className="h-3 w-3 fill-accent-gold" />
-                      {anime.score}
+                    <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-lg border border-accent-gold/20 bg-black/60 px-2 py-1 text-xs font-bold text-accent-gold shadow-sm backdrop-blur-md">
+                      <Star className="h-3.5 w-3.5 fill-accent-gold drop-shadow-[0_0_5px_rgba(255,215,0,0.8)]" />
+                      {anime.score.toFixed(1)}
                     </div>
                   )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-                  <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 transition-opacity group-hover:opacity-100">
-                    <p className="line-clamp-2 text-xs font-medium text-white">{anime.name_cn || anime.name}</p>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-60 transition-opacity duration-300 group-hover:opacity-80" />
+                  <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-4 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+                    <p className="line-clamp-2 text-sm font-bold leading-snug text-white drop-shadow-md">{anime.name_cn || anime.name}</p>
                   </div>
                 </div>
-                <p className="mt-2 truncate text-xs font-medium text-text-secondary transition-colors group-hover:text-text-primary">
+                <p className="mt-3 truncate text-sm font-bold text-white transition-colors group-hover:text-accent-primary px-1">
                   {anime.name_cn || anime.name}
                 </p>
               </div>
             ))}
           </div>
         ) : (
-          <div className="py-20 text-center text-text-muted">
-            <p>搜索番剧以浏览海报墙</p>
+          <div className="rounded-3xl border border-white/5 bg-white/[0.01] py-32 text-center shadow-inner">
+            <Search className="mx-auto mb-6 h-16 w-16 text-text-muted opacity-20" />
+            <p className="text-xl font-bold text-white tracking-wide">搜索番剧以浏览海报墙</p>
+            <p className="mt-3 text-sm font-medium text-text-muted">输入 Bangumi 链接或关键词进行搜索</p>
           </div>
         )
       )}

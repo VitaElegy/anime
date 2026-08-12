@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { Pause, Play, Trash2, RefreshCw, Loader2 } from 'lucide-react'
+import { Pause, Play, Trash2, RefreshCw, Loader2, Download as DownloadIcon } from 'lucide-react'
 import { cn, formatBytes, formatEta } from '@/lib/utils'
 import { getDownloadProgress, pauseTorrent, resumeTorrent, deleteTorrent } from '@/api'
 import type { DownloadTask } from '@/types'
@@ -68,92 +68,120 @@ export default function DownloadsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-accent-primary" />
+      <div className="flex items-center justify-center py-32">
+        <div className="relative">
+          <Loader2 className="h-12 w-12 animate-spin text-accent-primary" />
+          <div className="absolute inset-0 animate-pulse rounded-full bg-accent-primary opacity-50 blur-xl"></div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">下载管理</h1>
-        <button
-          onClick={refresh}
-          className="flex items-center gap-1.5 rounded-lg bg-bg-card border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
-        >
-          <RefreshCw className="h-3.5 w-3.5" /> 刷新
-        </button>
+    <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500">
+      
+      <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-black/40 p-8 shadow-2xl backdrop-blur-xl">
+        <div className="absolute inset-0 bg-gradient-to-br from-accent-primary/10 via-transparent to-accent-cyan/10" />
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+             <div className="rounded-xl bg-accent-primary/20 p-3 border border-accent-primary/30 shadow-inner">
+               <DownloadIcon className="h-6 w-6 text-accent-primary" />
+             </div>
+             <div>
+               <h1 className="text-3xl font-black text-white tracking-wide">下载管理</h1>
+               <p className="text-sm font-medium text-white/60 mt-1">管理你的离线缓存进度</p>
+             </div>
+          </div>
+          <button
+            onClick={refresh}
+            className="group flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-bold text-white shadow-lg transition-all hover:bg-white/10 hover:shadow-xl hover:scale-105"
+          >
+            <RefreshCw className="h-4 w-4 transition-transform duration-500 group-hover:rotate-180" /> 刷新
+          </button>
+        </div>
       </div>
 
       {tasks.length === 0 ? (
-        <div className="text-center py-20 text-text-muted">
-          <Play className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p>暂无下载任务</p>
-          <p className="text-xs mt-1">去搜索页添加一些下载吧</p>
+        <div className="rounded-3xl border border-white/5 bg-white/[0.01] py-32 text-center shadow-inner backdrop-blur-sm">
+          <Play className="mx-auto mb-6 h-16 w-16 text-text-muted opacity-20" />
+          <p className="text-xl font-bold text-white tracking-wide">暂无下载任务</p>
+          <p className="mt-3 text-sm font-medium text-text-muted">去搜索页添加一些下载吧</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid gap-4 lg:grid-cols-2">
           {tasks.map((task) => {
             const isPaused = task.state.includes('paused')
             const pct = (task.progress * 100).toFixed(1)
 
             return (
-              <div key={task.hash} className="rounded-xl bg-bg-card border border-border p-4 space-y-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{task.name || task.hash}</p>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-text-muted">
-                      <span className={stateColor(task.state)}>
-                        {stateLabels[task.state] || task.state}
-                      </span>
-                      <span>{formatBytes(task.size)}</span>
-                      {task.speed > 0 && <span>{formatBytes(task.speed)}/s</span>}
-                      {task.eta > 0 && <span>剩余 {formatEta(task.eta)}</span>}
+              <div key={task.hash} className="group relative overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] p-6 shadow-lg backdrop-blur-md transition-all hover:border-white/10 hover:bg-white/[0.04]">
+                <div className="absolute inset-0 bg-gradient-to-r from-accent-cyan/0 via-accent-cyan/5 to-accent-cyan/0 opacity-0 transition-opacity duration-500 group-hover:opacity-100 translate-x-[-100%] group-hover:translate-x-[100%]" />
+                
+                <div className="relative z-10 flex flex-col gap-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <p className="text-lg font-bold text-white leading-snug break-all">{task.name || task.hash}</p>
+                      <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-white/60">
+                        <span className={cn('rounded-md px-2 py-1 border shadow-sm backdrop-blur-sm', 
+                            stateColor(task.state).includes('success') ? 'bg-success/20 text-success border-success/30' :
+                            stateColor(task.state).includes('danger') ? 'bg-danger/20 text-danger border-danger/30' :
+                            stateColor(task.state).includes('warning') ? 'bg-warning/20 text-warning border-warning/30' :
+                            'bg-accent-cyan/20 text-accent-cyan border-accent-cyan/30'
+                        )}>
+                          {stateLabels[task.state] || task.state}
+                        </span>
+                        <span className="rounded-md bg-white/10 px-2 py-1">{formatBytes(task.size)}</span>
+                        {task.speed > 0 && <span className="rounded-md bg-white/10 px-2 py-1">{formatBytes(task.speed)}/s</span>}
+                        {task.eta > 0 && <span className="rounded-md bg-white/10 px-2 py-1">剩余 {formatEta(task.eta)}</span>}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      {isPaused ? (
+                        <button
+                          onClick={() => handleResume(task.hash)}
+                          className="rounded-xl border border-success/30 bg-success/20 p-2.5 text-success transition-all hover:scale-105 hover:bg-success/30 shadow-md"
+                          title="恢复"
+                        >
+                          <Play className="h-5 w-5" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handlePause(task.hash)}
+                          className="rounded-xl border border-warning/30 bg-warning/20 p-2.5 text-warning transition-all hover:scale-105 hover:bg-warning/30 shadow-md"
+                          title="暂停"
+                        >
+                          <Pause className="h-5 w-5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(task.hash)}
+                        className="rounded-xl border border-danger/30 bg-danger/20 p-2.5 text-danger transition-all hover:scale-105 hover:bg-danger/30 shadow-md"
+                        title="删除"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex shrink-0 gap-1">
-                    {isPaused ? (
-                      <button
-                        onClick={() => handleResume(task.hash)}
-                        className="rounded-lg p-2 text-success hover:bg-success/10 transition-colors"
-                        title="恢复"
-                      >
-                        <Play className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handlePause(task.hash)}
-                        className="rounded-lg p-2 text-warning hover:bg-warning/10 transition-colors"
-                        title="暂停"
-                      >
-                        <Pause className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDelete(task.hash)}
-                      className="rounded-lg p-2 text-danger hover:bg-danger/10 transition-colors"
-                      title="删除"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
 
-                {/* Progress bar */}
-                <div className="space-y-1">
-                  <div className="h-2 rounded-full bg-bg-primary overflow-hidden">
-                    <div
-                      className={cn(
-                        'h-full rounded-full transition-all duration-500',
-                        isPaused
-                          ? 'bg-warning'
-                          : 'bg-gradient-to-r from-accent-cyan to-accent-primary'
-                      )}
-                      style={{ width: `${pct}%` }}
-                    />
+                  {/* Progress bar */}
+                  <div className="space-y-2 mt-2">
+                    <div className="flex justify-end">
+                       <span className="text-sm font-black text-white/90 drop-shadow-sm">{pct}%</span>
+                    </div>
+                    <div className="h-2.5 rounded-full bg-black/40 overflow-hidden shadow-inner">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-all duration-500 relative',
+                          isPaused
+                            ? 'bg-warning shadow-[0_0_10px_rgba(250,204,21,0.5)]'
+                            : 'bg-gradient-to-r from-accent-cyan to-[#00f2fe] shadow-[0_0_10px_rgba(0,242,254,0.5)]'
+                        )}
+                        style={{ width: `${pct}%` }}
+                      >
+                         {!isPaused && <div className="absolute inset-0 bg-white/20 w-full h-full animate-pulse" />}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-right text-xs text-text-muted">{pct}%</p>
                 </div>
               </div>
             )

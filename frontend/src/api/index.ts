@@ -4,6 +4,8 @@ import type {
   DownloadRequest,
   DownloadTask,
   AnimeMetadata,
+  AnimeMetadataFull,
+  StreamingLink,
   AuthResponse,
   FavoriteItem,
   ImportFavoritesResponse,
@@ -104,9 +106,63 @@ export async function searchSubsPlease(q = '', quality = 1080): Promise<SearchRe
   return data
 }
 
+export async function searchMikan(q: string): Promise<SearchResult> {
+  const { data } = await api.get('/search/mikan', { params: { q } })
+  return data
+}
+
+export async function searchAnimeGarden(q: string, page = 1, pageSize = 30): Promise<SearchResult> {
+  const { data } = await api.get('/search/anime_garden', { params: { q, page, page_size: pageSize } })
+  return data
+}
+
 export async function searchAll(q: string): Promise<SearchResult[]> {
   const { data } = await api.get('/search/all', { params: { q } })
   return data
+}
+
+/** Multi-source aggregated search (Nyaa+SubsPlease+Mikan+AnimeGarden), deduped & ranked. */
+export async function searchUnified(q: string, limit = 80): Promise<SearchResult> {
+  const { data } = await api.get('/search/unified', { params: { q, limit } })
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Frontend-friendly search endpoints used by SearchPage (Chinese-first)
+// ---------------------------------------------------------------------------
+
+export interface SimpleAnimeHit {
+  id: string
+  title: string
+  titleOriginal?: string
+  coverImage: string
+  description: string
+  year?: string | number
+  score?: number
+  source: string
+}
+
+export interface SimpleTorrentHit {
+  info_hash?: string
+  title: string
+  size: string
+  seeders: number
+  source: string
+  fansub?: string
+  link: string
+  pubDate?: string
+}
+
+/** Bangumi-backed anime lookup, accepts raw Chinese/Japanese verbatim. */
+export async function searchAnimeNew(q: string, limit = 12): Promise<SimpleAnimeHit[]> {
+  const { data } = await api.get('/search/anime', { params: { q, limit } })
+  return data?.anime || []
+}
+
+/** Multi-source torrent search shaped for SearchPage (mirrors unified + mapping). */
+export async function searchTorrentsNew(q: string, limit = 100): Promise<SimpleTorrentHit[]> {
+  const { data } = await api.get('/search/torrents', { params: { q, limit } })
+  return data?.torrents || []
 }
 
 // Download
@@ -153,6 +209,16 @@ export async function searchMetadata(q: string, limit = 25): Promise<AnimeMetada
 
 export async function getMetadata(subjectId: number): Promise<AnimeMetadata> {
   const { data } = await api.get(`/metadata/${subjectId}`)
+  return data
+}
+
+export async function getMetadataFull(subjectId: number): Promise<AnimeMetadataFull> {
+  const { data } = await api.get(`/metadata/${subjectId}/full`)
+  return data
+}
+
+export async function getStreamingLinks(subjectId: number): Promise<StreamingLink[]> {
+  const { data } = await api.get(`/metadata/${subjectId}/streaming`)
   return data
 }
 

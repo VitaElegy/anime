@@ -17,6 +17,13 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // HLS segments and playlists live under /media/hls/* on the backend.
+      // Without this proxy, Vite's SPA fallback returns index.html for every
+      // segment request and the player shows a "bad manifest" error.
+      '/media': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,

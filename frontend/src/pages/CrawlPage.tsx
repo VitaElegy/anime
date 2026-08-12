@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Play, Square, Trash2, Radio, History, Info, ChevronUp } from 'lucide-react'
+import { Play, Square, Trash2, Radio, History, Info, ChevronUp, TerminalSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getCrawlHistory } from '@/api'
 import type { CrawlLogEntry } from '@/types'
@@ -62,7 +62,6 @@ export default function CrawlPage() {
   const [nyaaMaxPage, setNyaaMaxPage] = useState(3)
   const logEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<Map<CrawlSource, AbortController>>(new Map())
-  // Breakpoint state: tracks last successfully completed page per source
   const breakpointRef = useRef<Map<string, number>>(new Map())
 
   useEffect(() => {
@@ -82,7 +81,6 @@ export default function CrawlPage() {
     abortRef.current.set(source, controller)
     setRunning((prev) => new Set(prev).add(source))
 
-    // Check breakpoint for resume
     const bpKey = `${source}:${keyword}`
     const lastPage = breakpointRef.current.get(bpKey) || 0
 
@@ -133,7 +131,6 @@ export default function CrawlPage() {
               if (payload === '[DONE]') break
               try {
                 const data = JSON.parse(payload)
-                // Extract result count from success messages
                 const countMatch = data.msg?.match(/共 (\d+) 条/)
                 if (countMatch) pageResults = parseInt(countMatch[1])
 
@@ -149,7 +146,6 @@ export default function CrawlPage() {
         }
 
         totalResults += pageResults
-        // Save breakpoint
         breakpointRef.current.set(bpKey, page)
 
         if (source === 'nyaa' && pageResults === 0 && page > 1) {
@@ -157,7 +153,6 @@ export default function CrawlPage() {
           break
         }
 
-        // Small delay between pages
         if (page < endPage && !controller.signal.aborted) {
           addLog({ timestamp: now(), level: 'info', source, message: '等待 1 秒避免限流...' })
           await new Promise(r => setTimeout(r, 1000))
@@ -166,7 +161,6 @@ export default function CrawlPage() {
 
       if (!controller.signal.aborted) {
         addLog({ timestamp: now(), level: 'success', source, message: `全部完成！累计获取 ${totalResults} 条数据` })
-        // Clear breakpoint on full completion
         breakpointRef.current.delete(bpKey)
       }
     } catch (e) {
@@ -203,111 +197,138 @@ export default function CrawlPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">抓取控制台</h1>
-        <div className="flex gap-2">
-          <button onClick={loadHistory} className="flex items-center gap-1.5 rounded-lg bg-bg-card border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors">
-            <History className="h-3.5 w-3.5" /> 历史
-          </button>
-          <button onClick={startAll} disabled={running.size === sources.length}
-            className="flex items-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-primary/90 transition-colors disabled:opacity-50">
-            <Play className="h-3.5 w-3.5" /> 全部抓取
-          </button>
+    <div className="space-y-8 max-w-[1400px] mx-auto animate-in fade-in duration-500">
+      
+      {/* Header Banner */}
+      <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-black/40 p-8 shadow-2xl backdrop-blur-xl">
+        <div className="absolute inset-0 bg-gradient-to-br from-accent-gold/15 via-transparent to-accent-primary/10" />
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+             <div className="rounded-xl bg-accent-gold/20 p-3 border border-accent-gold/30 shadow-inner">
+               <TerminalSquare className="h-6 w-6 text-accent-gold" />
+             </div>
+             <div>
+               <h1 className="text-3xl font-black text-white tracking-wide">抓取控制台</h1>
+               <p className="text-sm font-medium text-white/60 mt-1">从多个数据源获取番剧和种子信息</p>
+             </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button onClick={loadHistory} className="group flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-bold text-white shadow-lg transition-all hover:bg-white/10 hover:shadow-xl hover:scale-105">
+              <History className="h-4 w-4 transition-transform duration-500 group-hover:-rotate-45" /> 抓取历史
+            </button>
+            <button onClick={startAll} disabled={running.size === sources.length}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-accent-primary to-accent-secondary px-6 py-3 text-sm font-bold text-white shadow-lg shadow-accent-primary/20 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100">
+              <Play className="h-4 w-4" /> 全部抓取
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Keyword + Nyaa pagination config */}
-      <div className="flex flex-wrap gap-3 items-end">
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-xs text-text-muted mb-1 block">关键词</label>
-          <input type="text" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="抓取关键词（可选）"
-            className={cn('w-full rounded-lg border border-border bg-bg-card py-2 px-3 text-sm', 'focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary/50')} />
-        </div>
-        <div className="w-28">
-          <label className="text-xs text-text-muted mb-1 block">Nyaa 起始页</label>
-          <input type="number" min={1} max={100} value={nyaaPage} onChange={(e) => setNyaaPage(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-full rounded-lg border border-border bg-bg-card py-2 px-3 text-sm focus:border-accent-primary focus:outline-none" />
-        </div>
-        <div className="w-28">
-          <label className="text-xs text-text-muted mb-1 block">Nyaa 总页数</label>
-          <input type="number" min={1} max={20} value={nyaaMaxPage} onChange={(e) => setNyaaMaxPage(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-full rounded-lg border border-border bg-bg-card py-2 px-3 text-sm focus:border-accent-primary focus:outline-none" />
-        </div>
+      {/* Configs */}
+      <div className="rounded-2xl border border-white/5 bg-black/20 p-6 shadow-xl backdrop-blur-md">
+         <div className="flex flex-wrap gap-4 items-end">
+           <div className="flex-1 min-w-[200px]">
+             <label className="text-xs font-bold text-white/60 mb-2 block">目标关键词</label>
+             <input type="text" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="留空则拉取全部（例如 SubsPlease 当季新番）"
+               className="w-full rounded-xl border border-white/10 bg-white/5 py-3 px-4 text-sm font-bold text-white outline-none focus:border-accent-primary focus:bg-white/10 transition-all" />
+           </div>
+           <div className="w-32">
+             <label className="text-xs font-bold text-white/60 mb-2 block">Nyaa 起始页</label>
+             <input type="number" min={1} max={100} value={nyaaPage} onChange={(e) => setNyaaPage(Math.max(1, parseInt(e.target.value) || 1))}
+               className="w-full rounded-xl border border-white/10 bg-white/5 py-3 px-4 text-sm font-bold text-white outline-none focus:border-accent-primary focus:bg-white/10 transition-all" />
+           </div>
+           <div className="w-32">
+             <label className="text-xs font-bold text-white/60 mb-2 block">Nyaa 总页数</label>
+             <input type="number" min={1} max={20} value={nyaaMaxPage} onChange={(e) => setNyaaMaxPage(Math.max(1, parseInt(e.target.value) || 1))}
+               className="w-full rounded-xl border border-white/10 bg-white/5 py-3 px-4 text-sm font-bold text-white outline-none focus:border-accent-primary focus:bg-white/10 transition-all" />
+           </div>
+         </div>
       </div>
 
-      {/* Source cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Sources */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {sources.map((src) => {
           const isRunning = running.has(src.key)
           const isExpanded = expandedInfo === src.key
           const bp = hasBreakpoint(src.key)
           return (
-            <div key={src.key} className="rounded-xl bg-bg-card border border-border p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium">{src.label}</p>
-                    {bp && <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning">有断点</span>}
-                  </div>
-                  <p className="text-xs text-text-muted">{src.description}</p>
-                </div>
-                <div className="flex items-center gap-1">
-                  {isRunning && <Radio className="h-4 w-4 text-accent-cyan pulse-dot" />}
-                  <button onClick={() => setExpandedInfo(isExpanded ? null : src.key)} className="rounded p-1 text-text-muted hover:text-text-primary">
-                    {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
+            <div key={src.key} className={cn("relative overflow-hidden rounded-2xl border p-6 shadow-xl backdrop-blur-md transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl", isRunning ? 'border-accent-cyan/30 bg-accent-cyan/5' : 'border-white/5 bg-black/20 hover:border-white/20')}>
+              {isRunning && <div className="absolute inset-0 bg-gradient-to-t from-accent-cyan/0 via-accent-cyan/5 to-accent-cyan/0 opacity-50 animate-pulse" />}
+              
+              <div className="relative z-10 space-y-5">
+                 <div className="flex items-start justify-between gap-4">
+                   <div>
+                     <div className="flex items-center gap-3 mb-1">
+                       <h3 className="text-lg font-bold text-white">{src.label}</h3>
+                       {bp && <span className="rounded bg-warning/20 border border-warning/30 px-1.5 py-0.5 text-[10px] font-bold text-warning shadow-sm">断点存在</span>}
+                     </div>
+                     <p className="text-sm font-medium text-white/50">{src.description}</p>
+                   </div>
+                   <div className="flex items-center gap-2">
+                     {isRunning && <Radio className="h-5 w-5 text-accent-cyan animate-pulse" />}
+                     <button onClick={() => setExpandedInfo(isExpanded ? null : src.key)} className="rounded-lg bg-white/5 p-2 text-white/60 hover:bg-white/10 hover:text-white transition-all shadow-sm border border-white/5">
+                       {isExpanded ? <ChevronUp className="h-4 w-4" /> : <Info className="h-4 w-4" />}
+                     </button>
+                   </div>
+                 </div>
+
+                 {/* Capability info panel */}
+                 {isExpanded && (
+                   <div className="rounded-xl bg-white/5 border border-white/5 p-4 space-y-2 animate-in slide-in-from-top-2 fade-in">
+                     <p className="text-[10px] font-black text-accent-secondary uppercase tracking-widest">支持特性</p>
+                     <div className="space-y-1.5">
+                        {src.capabilities.map((cap, j) => (
+                          <div key={j} className="flex items-start gap-2 text-xs font-medium text-white/70">
+                            <span className="text-accent-cyan mt-0.5">•</span>
+                            <span>{cap}</span>
+                          </div>
+                        ))}
+                     </div>
+                     <div className="border-t border-white/10 pt-2 mt-2 text-[10px] font-bold text-white/40">
+                       {src.pageSize > 0 ? `每页 ${src.pageSize} 条 · 可连续抓取 ${src.maxPages} 页` : '一次拉取全部数据'}
+                     </div>
+                   </div>
+                 )}
+
+                 <button onClick={() => isRunning ? stopCrawl(src.key) : startCrawlSSE(src.key)}
+                   className={cn('w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold shadow-lg transition-all hover:scale-[1.02]',
+                     isRunning ? 'bg-danger/20 text-danger border border-danger/30 hover:bg-danger/30' : 
+                     bp ? 'bg-warning/20 text-warning border border-warning/30 hover:bg-warning/30' : 
+                     'bg-white/10 text-white border border-white/10 hover:bg-white/20'
+                   )}>
+                   {isRunning ? <><Square className="h-4 w-4" /> 暂停抓取</> : bp ? <><Play className="h-4 w-4" /> 续抓</> : <><Play className="h-4 w-4" /> 开始抓取</>}
+                 </button>
               </div>
-
-              {/* Capability info panel */}
-              {isExpanded && (
-                <div className="rounded-lg bg-bg-primary/50 p-3 space-y-1.5">
-                  <p className="text-[10px] font-semibold text-accent-secondary uppercase tracking-wider">可抓取能力</p>
-                  {src.capabilities.map((cap, j) => (
-                    <div key={j} className="flex items-start gap-1.5 text-xs text-text-secondary">
-                      <span className="text-accent-cyan mt-0.5">•</span>
-                      <span>{cap}</span>
-                    </div>
-                  ))}
-                  <div className="border-t border-border/50 pt-1.5 mt-1.5 text-[10px] text-text-muted">
-                    {src.pageSize > 0 ? `每页 ${src.pageSize} 条 · 可连续抓取 ${src.maxPages} 页` : '一次拉取全部数据'}
-                  </div>
-                </div>
-              )}
-
-              <button onClick={() => isRunning ? stopCrawl(src.key) : startCrawlSSE(src.key)}
-                className={cn('w-full flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-colors',
-                  isRunning ? 'bg-danger/10 text-danger hover:bg-danger/20' : bp ? 'bg-warning/10 text-warning hover:bg-warning/20' : 'bg-accent-primary/10 text-accent-primary hover:bg-accent-primary/20'
-                )}>
-                {isRunning ? <><Square className="h-3.5 w-3.5" /> 暂停</> : bp ? <><Play className="h-3.5 w-3.5" /> 续抓</> : <><Play className="h-3.5 w-3.5" /> 抓取</>}
-              </button>
             </div>
           )
         })}
       </div>
 
       {/* Log console */}
-      <div className="rounded-xl bg-bg-card border border-border overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border px-4 py-2">
-          <span className="text-xs font-medium text-text-secondary">日志输出 {logs.length > 0 && `(${logs.length} 条)`}</span>
-          <button onClick={clearLogs} className="flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition-colors">
-            <Trash2 className="h-3 w-3" /> 清空
+      <div className="rounded-2xl border border-white/5 bg-black overflow-hidden shadow-2xl ring-1 ring-white/10">
+        <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.02] px-6 py-4">
+          <span className="text-sm font-bold text-white/80 flex items-center gap-2">
+             <TerminalSquare className="h-4 w-4" /> 运行日志 {logs.length > 0 && `(${logs.length})`}
+          </span>
+          <button onClick={clearLogs} className="flex items-center gap-1.5 text-xs font-bold text-text-muted hover:text-white transition-colors bg-white/5 px-3 py-1.5 rounded-lg">
+            <Trash2 className="h-3.5 w-3.5" /> 清空终端
           </button>
         </div>
-        <div className="h-80 overflow-y-auto p-4 font-mono text-xs space-y-0.5">
+        <div className="h-[400px] overflow-y-auto p-6 font-mono text-sm space-y-1.5 custom-scrollbar">
           {logs.length === 0 ? (
-            <div className="text-text-muted space-y-1">
-              <p>点击上方「抓取」按钮开始（支持 SSE 实时流）</p>
-              <p>点击 <Info className="h-3 w-3 inline" /> 查看每个数据源可抓取的详细能力</p>
-              <p>中途暂停后可「续抓」，从断点位置继续</p>
+            <div className="flex h-full flex-col items-center justify-center text-center text-white/30 space-y-4">
+               <TerminalSquare className="h-12 w-12 opacity-20" />
+               <div className="space-y-2">
+                 <p>点击上方的「开始抓取」启动数据流（SSE）</p>
+                 <p>日志将实时显示在这里</p>
+               </div>
             </div>
           ) : logs.map((entry, i) => (
-            <div key={i} className="log-entry flex gap-2">
-              <span className="text-text-muted shrink-0">{entry.timestamp}</span>
-              <span className={cn('shrink-0 font-bold', levelColor(entry.level))}>[{levelTag(entry.level)}]</span>
-              <span className="text-accent-secondary shrink-0">[{entry.source}]</span>
-              <span className="text-text-primary">{entry.message}</span>
+            <div key={i} className="flex gap-3 hover:bg-white/[0.02] px-2 py-0.5 rounded transition-colors">
+              <span className="text-white/40 shrink-0 select-none">{entry.timestamp}</span>
+              <span className={cn('shrink-0 font-bold w-12 select-none', levelColor(entry.level))}>[{levelTag(entry.level)}]</span>
+              <span className="text-accent-secondary shrink-0 font-bold select-none w-24">[{entry.source}]</span>
+              <span className="text-white/80 break-all">{entry.message}</span>
             </div>
           ))}
           <div ref={logEndRef} />
@@ -316,23 +337,41 @@ export default function CrawlPage() {
 
       {/* History modal */}
       {showHistory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowHistory(false)}>
-          <div className="relative max-h-[70vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-bg-secondary border border-border p-6" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-4">抓取历史</h2>
-            {history.length === 0 ? <p className="text-text-muted text-sm">暂无记录</p> : (
-              <div className="space-y-2">
-                {history.map((h, i) => (
-                  <div key={i} className="flex items-center gap-3 rounded-lg bg-bg-card border border-border p-3 text-xs">
-                    <span className={cn('font-medium', h.status === 'success' ? 'text-success' : 'text-danger')}>{h.status === 'success' ? '✓' : '✗'}</span>
-                    <span className="text-accent-secondary">[{String(h.source)}]</span>
-                    <span className="flex-1">{String(h.keyword) || '(全部)'} — {String(h.result_count)} 条</span>
-                    <span className="text-text-muted">{String(h.duration_ms)}ms</span>
-                    <span className="text-text-muted">{String(h.created_at)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button onClick={() => setShowHistory(false)} className="absolute right-4 top-4 rounded-lg p-1 text-text-muted hover:text-text-primary">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in" onClick={() => setShowHistory(false)}>
+          <div className="relative max-h-[80vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-bg-primary/95 shadow-2xl flex flex-col animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-white/10 p-6 bg-white/[0.02]">
+               <h2 className="text-xl font-bold text-white flex items-center gap-2"><History className="h-5 w-5" /> 抓取历史记录</h2>
+               <button onClick={() => setShowHistory(false)} className="rounded-full bg-white/5 p-2 text-white/50 hover:bg-white/10 hover:text-white transition-colors">✕</button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 bg-black/20">
+               {history.length === 0 ? (
+                 <div className="py-20 text-center text-white/40 font-medium">暂无历史记录</div>
+               ) : (
+                 <div className="space-y-3">
+                   {history.map((h, i) => (
+                     <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-4 shadow-sm hover:bg-white/5 transition-colors">
+                       <div className="flex items-center gap-4 min-w-0 flex-1">
+                          <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold shadow-inner border", h.status === 'success' ? 'bg-success/10 text-success border-success/20' : 'bg-danger/10 text-danger border-danger/20')}>
+                             {h.status === 'success' ? '✓' : '✗'}
+                          </div>
+                          <div className="min-w-0">
+                             <div className="flex items-center gap-2">
+                               <span className="font-bold text-white text-sm">[{String(h.source)}]</span>
+                               <span className="truncate text-sm font-medium text-white/70">{String(h.keyword) || '全部抓取'}</span>
+                             </div>
+                             <p className="text-xs text-white/50 mt-1">共抓取 <span className="text-white font-bold">{String(h.result_count)}</span> 条数据</p>
+                          </div>
+                       </div>
+                       <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
+                          <span className="text-xs font-bold text-white/60 bg-white/5 px-2 py-1 rounded-md">{String(h.duration_ms)} ms</span>
+                          <span className="text-[10px] font-medium text-white/40">{String(h.created_at)}</span>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               )}
+            </div>
           </div>
         </div>
       )}

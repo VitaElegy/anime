@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AlertCircle, Check, CheckCircle2, Clock3, Film, Loader2, MessageSquare, RefreshCw, Tv, UserPlus, Users, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Clock3, Film, Loader2, MessageSquare, RefreshCw, Tv, UserPlus, Users, X, Send } from 'lucide-react'
 import {
-  acceptFriendRequest,
   acceptRoomInvitation,
   createWatchRoom,
   dismissRoomInvitation,
@@ -12,7 +11,6 @@ import {
   listMediaLibrary,
   listWatchHistory,
   prepareMediaHls,
-  rejectFriendRequest,
   removeFriend,
   scanMediaLibrary,
   sendDirectMessage,
@@ -21,42 +19,17 @@ import {
 import { useAuth } from '@/contexts/useAuth'
 import type { DirectMessage, MediaAsset, WatchHistoryItem, WatchLobbyOverview, WatchLobbyRoom } from '@/types'
 import { cn, formatBytes } from '@/lib/utils'
-
-function formatUpdatedAt(ts: number): string {
-  if (!ts) return '未知'
-  return new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false })
-}
-
-function formatRelativeTime(ts: number): string {
-  if (!ts) return '刚刚'
-  const diff = Math.max(0, Math.floor(Date.now() / 1000) - ts)
-  if (diff < 60) return '刚刚'
-  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
-  return `${Math.floor(diff / 86400)} 天前`
-}
-
-function formatPosition(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds))
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = total % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
+import {
+  extractErrorMessage,
+  formatDateTime as formatUpdatedAt,
+  getAssetBlockReason as blockReason,
+  isAssetBlocked,
+  shortError,
+  socialStatusText,
+} from '@/lib/watchFormatters'
 
 function trimError(message: string): string {
-  if (!message) return ''
-  return message.length > 200 ? `${message.slice(0, 200)}...` : message
-}
-
-function extractErrorMessage(error: unknown): string {
-  if (typeof error === 'object' && error && 'response' in error) {
-    const response = (error as { response?: { data?: { detail?: string } } }).response
-    if (response?.data?.detail) return response.data.detail
-  }
-  if (error instanceof Error && error.message) return error.message
-  return '操作失败，请稍后重试'
+  return shortError(message, 200)
 }
 
 type LoadFailure = {
@@ -66,11 +39,7 @@ type LoadFailure = {
 }
 
 function isBlocked(asset: MediaAsset): boolean {
-  return !asset.watch_enabled || asset.recommended_mode === 'blocked' || asset.probe_status === 'failed'
-}
-
-function blockReason(asset: MediaAsset): string {
-  return trimError(asset.watch_block_reason || asset.probe_error || asset.last_error || '片源暂时不可用')
+  return isAssetBlocked(asset)
 }
 
 function modeLabel(asset: MediaAsset): string {
@@ -95,6 +64,8 @@ function hlsStatusLabel(status: MediaAsset['hls_status']): string {
   switch (status) {
     case 'ready':
       return 'HLS 已就绪'
+    case 'queued':
+      return 'HLS 排队中'
     case 'preparing':
       return 'HLS 准备中'
     case 'error':
@@ -102,14 +73,6 @@ function hlsStatusLabel(status: MediaAsset['hls_status']): string {
     default:
       return '尚未准备'
   }
-}
-
-function socialStatusText(item: { current_room_name?: string; current_page?: string; status_text?: string }) {
-  if (item.current_room_name) return `正在 ${item.current_room_name}`
-  if (item.status_text) return item.status_text
-  if (item.current_page === 'watch_room') return '正在房间内'
-  if (item.current_page === 'watch_lobby') return '正在大厅'
-  return '在线'
 }
 
 function buildLoadWarning(failures: LoadFailure[]): string {
@@ -188,29 +151,23 @@ export default function WatchPartyPage() {
   const { user } = useAuth()
   const chatListRef = useRef<HTMLDivElement | null>(null)
   const [assets, setAssets] = useState<MediaAsset[]>([])
-  const [history, setHistory] = useState<WatchHistoryItem[]>([])
   const [rooms, setRooms] = useState<WatchLobbyRoom[]>([])
   const [lobby, setLobby] = useState<WatchLobbyOverview | null>(null)
   const [loading, setLoading] = useState(true)
-  const [roomsLoading, setRoomsLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [creating, setCreating] = useState(false)
   const [preparingId, setPreparingId] = useState('')
   const [hostName, setHostName] = useState('elegy')
   const [roomName, setRoomName] = useState('')
   const [selectedMediaId, setSelectedMediaId] = useState('')
-  const [showMineOnly, setShowMineOnly] = useState(false)
   const [actionMessage, setActionMessage] = useState('')
   const [actionTone, setActionTone] = useState<'info' | 'error'>('info')
   const [loadWarning, setLoadWarning] = useState('')
   const [libraryLoadError, setLibraryLoadError] = useState('')
   const [lobbyLoadError, setLobbyLoadError] = useState('')
-  const [historyLoadError, setHistoryLoadError] = useState('')
   const [friendUsername, setFriendUsername] = useState('')
   const [friendBusy, setFriendBusy] = useState(false)
-  const [friendActionId, setFriendActionId] = useState(0)
   const [roomInviteActionId, setRoomInviteActionId] = useState(0)
-  const [removingFriendId, setRemovingFriendId] = useState(0)
   const [selectedFriendId, setSelectedFriendId] = useState(0)
   const [chatMessages, setChatMessages] = useState<DirectMessage[]>([])
   const [chatLoading, setChatLoading] = useState(false)
@@ -226,12 +183,10 @@ export default function WatchPartyPage() {
     })
   }, [])
 
-  const loadLobbySnapshot = useCallback(async (silent = false) => {
-    if (!silent) setRoomsLoading(true)
+  const loadLobbySnapshot = useCallback(async () => {
     try {
-      const { overview, watchHistory, failures } = await fetchLobbyHistoryBundle(Boolean(user))
+      const { overview, failures } = await fetchLobbyHistoryBundle(Boolean(user))
       const lobbyFailure = failures.find((failure) => failure.key === 'lobby')
-      const historyFailure = failures.find((failure) => failure.key === 'history')
 
       if (overview) {
         applyLobby(overview)
@@ -240,32 +195,22 @@ export default function WatchPartyPage() {
         setLobbyLoadError(lobbyFailure.message)
       }
 
-      if (watchHistory) {
-        setHistory(watchHistory)
-        setHistoryLoadError('')
-      } else if (historyFailure) {
-        setHistoryLoadError(historyFailure.message)
-      }
-
       setLoadWarning(buildLoadWarning(failures))
     } catch (error) {
       const message = extractErrorMessage(error)
       setLobbyLoadError(message)
-      setHistoryLoadError(message)
       setLoadWarning(`放映大厅：${trimError(message)}。其余内容已保留，可稍后重试。`)
     } finally {
-      if (!silent) setRoomsLoading(false)
+      /* noop */
     }
   }, [applyLobby, user])
 
   const load = useCallback(async (forceScan = false) => {
     if (forceScan) setRefreshing(true)
-    setRoomsLoading(true)
     try {
-      const { library, overview, watchHistory, failures } = await fetchWatchPartyBundle(forceScan, Boolean(user))
+      const { library, overview, failures } = await fetchWatchPartyBundle(forceScan, Boolean(user))
       const libraryFailure = failures.find((failure) => failure.key === 'library')
       const lobbyFailure = failures.find((failure) => failure.key === 'lobby')
-      const historyFailure = failures.find((failure) => failure.key === 'history')
 
       if (library) {
         setAssets(library.items)
@@ -291,23 +236,14 @@ export default function WatchPartyPage() {
         setLobbyLoadError(lobbyFailure.message)
       }
 
-      if (watchHistory) {
-        setHistory(watchHistory)
-        setHistoryLoadError('')
-      } else if (historyFailure) {
-        setHistoryLoadError(historyFailure.message)
-      }
-
       setLoadWarning(buildLoadWarning(failures))
     } catch (error) {
       const message = extractErrorMessage(error)
       setLibraryLoadError(message)
       setLobbyLoadError(message)
-      setHistoryLoadError(message)
       setLoadWarning(`媒体库：${trimError(message)}。当前页面部分内容可能不是最新状态。`)
     } finally {
       setLoading(false)
-      setRoomsLoading(false)
       setRefreshing(false)
     }
   }, [applyLobby, user])
@@ -318,7 +254,7 @@ export default function WatchPartyPage() {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      void loadLobbySnapshot(true)
+      void loadLobbySnapshot()
     }, 15000)
     return () => window.clearInterval(timer)
   }, [loadLobbySnapshot])
@@ -329,27 +265,12 @@ export default function WatchPartyPage() {
     }
   }, [user?.username])
 
-  useEffect(() => {
-    if (!user && showMineOnly) {
-      setShowMineOnly(false)
-    }
-  }, [showMineOnly, user])
-
   const selectedAsset = assets.find((item) => item.media_id === selectedMediaId) || null
   const selectedAssetBlocked = Boolean(selectedAsset && isBlocked(selectedAsset))
   const onlineUsers = lobby?.online_users || []
   const friends = lobby?.friends || []
-  const incomingRequests = lobby?.incoming_requests || []
-  const outgoingRequests = lobby?.outgoing_requests || []
   const incomingRoomInvitations = lobby?.incoming_room_invitations || []
-  const outgoingRoomInvitations = lobby?.outgoing_room_invitations || []
   const selectedFriend = friends.find((item) => item.user_id === selectedFriendId) || null
-  const visibleRooms = showMineOnly && user ? rooms.filter((item) => item.owner_user_id === user.id) : rooms
-  const sortedRooms = [...visibleRooms].sort((left, right) => {
-    const leftMine = user && left.owner_user_id === user.id ? 1 : 0
-    const rightMine = user && right.owner_user_id === user.id ? 1 : 0
-    return rightMine - leftMine || right.updated_at - left.updated_at
-  })
 
   const loadConversation = useCallback(async (friendUserId: number) => {
     if (!user || !friendUserId) {
@@ -474,28 +395,6 @@ export default function WatchPartyPage() {
     }
   }
 
-  const handleIncomingRequest = async (requestId: number, action: 'accept' | 'reject') => {
-    setFriendActionId(requestId)
-    setActionMessage('')
-    try {
-      if (action === 'accept') {
-        await acceptFriendRequest(requestId)
-        setActionTone('info')
-        setActionMessage('好友申请已通过。')
-      } else {
-        await rejectFriendRequest(requestId)
-        setActionTone('info')
-        setActionMessage('好友申请已拒绝。')
-      }
-      await loadLobbySnapshot()
-    } catch (error) {
-      setActionTone('error')
-      setActionMessage(extractErrorMessage(error))
-    } finally {
-      setFriendActionId(0)
-    }
-  }
-
   const handleRoomInvitation = async (invitationId: number, roomId: string, action: 'accept' | 'dismiss') => {
     setRoomInviteActionId(invitationId)
     setActionMessage('')
@@ -504,7 +403,7 @@ export default function WatchPartyPage() {
         await acceptRoomInvitation(invitationId)
         setActionTone('info')
         setActionMessage('邀请已接受，正在进入房间。')
-        await loadLobbySnapshot(true)
+        await loadLobbySnapshot()
         navigate(`/watch/${roomId}`)
       } else {
         await dismissRoomInvitation(invitationId)
@@ -524,7 +423,6 @@ export default function WatchPartyPage() {
     if (!selectedFriend) return
     const targetId = selectedFriend.user_id
     const targetUsername = selectedFriend.username
-    setRemovingFriendId(targetId)
     setActionMessage('')
     try {
       await removeFriend(targetId)
@@ -536,7 +434,7 @@ export default function WatchPartyPage() {
       setActionTone('error')
       setActionMessage(extractErrorMessage(error))
     } finally {
-      setRemovingFriendId(0)
+      /* noop */
     }
   }
 
@@ -557,890 +455,635 @@ export default function WatchPartyPage() {
     }
   }
 
+  const [activeTab, setActiveTab] = useState<'lobby' | 'create' | 'social'>('lobby')
+
   return (
-    <div className="max-w-6xl space-y-6">
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-accent-cyan/15 via-bg-secondary to-accent-primary/10 p-6">
-        <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Tv className="h-5 w-5 text-accent-cyan" />
-              <h1 className="text-2xl font-bold">同看中心</h1>
+    <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-700 pb-12">
+      {/* Hero Banner */}
+      <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-black/40 p-8 md:p-12 shadow-2xl backdrop-blur-2xl group">
+        <div className="absolute -inset-full bg-gradient-to-br from-accent-cyan/20 via-accent-primary/10 to-transparent blur-[100px] opacity-50 group-hover:opacity-70 transition-all duration-1000" />
+        <div className="absolute -top-40 -right-40 h-[30rem] w-[30rem] rounded-full bg-accent-cyan/20 blur-[120px] mix-blend-screen" />
+        <div className="absolute -bottom-40 -left-40 h-[30rem] w-[30rem] rounded-full bg-accent-primary/20 blur-[120px] mix-blend-screen" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-3 rounded-2xl bg-white/5 px-4 py-2 border border-white/10 backdrop-blur-md shadow-inner">
+              <Tv className="h-5 w-5 text-accent-cyan animate-pulse" />
+              <span className="text-sm font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-accent-cyan to-white">WATCH PARTY</span>
             </div>
-            <p className="max-w-2xl text-sm text-text-secondary">
-              先扫描本地下载目录，再从左侧明确选一个“待建房片源”。解析失败的文件会直接标红展示原因，并禁用建房、转码和观看。
+            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight drop-shadow-xl">
+              同看大厅
+            </h1>
+            <p className="max-w-2xl text-base md:text-lg text-white/70 font-medium leading-relaxed">
+              在这里发现正在一起看番的伙伴。你可以加入别人的放映室，或者从本地媒体库发起自己的专属同看房间。
             </p>
-            <div className="flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full bg-bg-card/80 px-3 py-1 text-text-secondary">1. 刷新媒体库</span>
-              <span className="rounded-full bg-bg-card/80 px-3 py-1 text-text-secondary">2. 设为待建房片源</span>
-              <span className="rounded-full bg-bg-card/80 px-3 py-1 text-text-secondary">3. 创建房间</span>
-            </div>
           </div>
           <button
             onClick={() => load(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-bg-card px-3 py-2 text-xs text-text-secondary transition-colors hover:text-text-primary"
+            className="group relative flex shrink-0 items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-8 py-4 text-sm font-bold text-white shadow-xl backdrop-blur-md transition-all hover:bg-white/20 hover:scale-105 hover:shadow-2xl hover:shadow-white/10 overflow-hidden"
           >
-            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            刷新媒体库
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+            {refreshing ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5 transition-transform duration-500 group-hover:rotate-180" />}
+            重新扫描
           </button>
         </div>
       </div>
 
-      {actionMessage && (
-        <div
-          className={cn(
-            'flex items-start gap-2 rounded-xl px-4 py-3 text-sm',
-            actionTone === 'error' ? 'bg-danger/8 text-danger' : 'bg-accent-cyan/10 text-accent-cyan'
+      {/* Tabs Navigation */}
+      <div className="flex flex-wrap items-center justify-center gap-4">
+        <div className="flex rounded-3xl bg-black/40 border border-white/10 p-1.5 backdrop-blur-xl shadow-xl">
+          <button
+            onClick={() => setActiveTab('lobby')}
+            className={cn(
+              "flex items-center gap-3 rounded-full px-8 py-3.5 text-sm font-bold transition-all duration-300",
+              activeTab === 'lobby' 
+                ? "bg-gradient-to-r from-accent-gold/80 to-accent-gold text-black shadow-lg shadow-accent-gold/20 scale-105" 
+                : "text-white/60 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Tv className={cn("h-5 w-5", activeTab === 'lobby' && "animate-pulse")} />
+            大厅动态
+          </button>
+          <button
+            onClick={() => setActiveTab('create')}
+            className={cn(
+              "flex items-center gap-3 rounded-full px-8 py-3.5 text-sm font-bold transition-all duration-300",
+              activeTab === 'create' 
+                ? "bg-gradient-to-r from-accent-cyan to-accent-primary text-white shadow-lg shadow-accent-cyan/20 scale-105" 
+                : "text-white/60 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Film className={cn("h-5 w-5", activeTab === 'create' && "animate-pulse")} />
+            发起同看
+          </button>
+          <button
+            onClick={() => setActiveTab('social')}
+            className={cn(
+              "flex items-center gap-3 rounded-full px-8 py-3.5 text-sm font-bold transition-all duration-300",
+              activeTab === 'social' 
+                ? "bg-gradient-to-r from-accent-primary to-accent-secondary text-white shadow-lg shadow-accent-primary/20 scale-105" 
+                : "text-white/60 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <MessageSquare className={cn("h-5 w-5", activeTab === 'social' && "animate-pulse")} />
+            好友与聊天
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      {(actionMessage || loadWarning) && (
+        <div className="space-y-4 max-w-4xl mx-auto">
+          {actionMessage && (
+            <div className={cn(
+              'flex items-center gap-4 rounded-2xl border px-6 py-4 backdrop-blur-xl animate-in slide-in-from-top-4',
+              actionTone === 'error' ? 'border-danger/40 bg-danger/10 text-danger shadow-[0_0_30px_rgba(239,68,68,0.15)]' : 'border-accent-cyan/40 bg-accent-cyan/10 text-accent-cyan shadow-[0_0_30px_rgba(0,242,254,0.15)]'
+            )}>
+              {actionTone === 'error' ? <X className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
+              <span className="font-bold text-base">{actionMessage}</span>
+            </div>
           )}
-        >
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{actionMessage}</span>
+          {loadWarning && (
+            <div className="flex items-center gap-4 rounded-2xl border border-warning/40 bg-warning/10 px-6 py-4 backdrop-blur-xl text-warning animate-in slide-in-from-top-4 shadow-[0_0_30px_rgba(245,158,11,0.15)]">
+              <AlertCircle className="h-6 w-6" />
+              <span className="font-bold text-base">{loadWarning}</span>
+            </div>
+          )}
         </div>
       )}
 
-      {loadWarning && (
-        <div className="flex items-start gap-2 rounded-xl bg-warning/10 px-4 py-3 text-sm text-warning">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{loadWarning}</span>
-        </div>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Film className="h-4 w-4 text-accent-primary" />
-            <h2 className="text-lg font-semibold">本地片源</h2>
-            <span className="text-xs text-text-muted">{assets.length} 个文件</span>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-7 w-7 animate-spin text-accent-primary" />
-            </div>
-          ) : libraryLoadError && assets.length === 0 ? (
-            <div className="space-y-3 rounded-xl border border-danger/20 bg-danger/5 p-5 text-sm text-danger">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>媒体库暂时加载失败：{trimError(libraryLoadError)}</span>
-              </div>
-              <button
-                onClick={() => void load(false)}
-                className="inline-flex rounded-lg bg-danger px-3 py-2 text-xs font-medium text-white hover:bg-danger/90"
-              >
-                重试媒体库
-              </button>
-            </div>
-          ) : assets.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-8 text-sm text-text-muted">
-              当前还没有可用片源。等下载目录里有 `mp4/mkv/webm` 之类文件后，这里会自动识别并给出播放建议。
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {libraryLoadError && (
-                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-warning/20 bg-warning/8 px-4 py-3 text-sm text-warning">
-                  <div className="flex min-w-0 items-start gap-2">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>媒体库刷新失败，当前展示的是上次成功加载的片源快照。</span>
-                  </div>
-                  <button
-                    onClick={() => void load(false)}
-                    className="shrink-0 rounded-lg bg-warning px-3 py-2 text-xs font-medium text-white hover:bg-warning/90"
-                  >
-                    重试媒体库
-                  </button>
+      {/* Tab Content: Lobby */}
+      {activeTab === 'lobby' && (
+        <div className="animate-in fade-in slide-in-from-bottom-8 duration-500 max-w-6xl mx-auto space-y-8">
+          <div className="rounded-[2rem] border border-white/10 bg-black/40 p-8 md:p-10 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-center justify-between mb-10">
+              <div className="flex items-center gap-4">
+                <div className="rounded-xl bg-gradient-to-br from-accent-gold/30 to-accent-gold/10 p-3 border border-accent-gold/30 shadow-lg">
+                  <Tv className="h-7 w-7 text-accent-gold drop-shadow-md" />
                 </div>
-              )}
-              {assets.map((asset) => {
-                const selected = selectedMediaId === asset.media_id
-                const preparing = preparingId === asset.media_id || asset.hls_status === 'preparing'
-                const blocked = isBlocked(asset)
-                return (
-                  <div
-                    key={asset.media_id}
-                    className={cn(
-                      'rounded-xl border p-4 transition-colors',
-                      selected ? 'border-accent-primary bg-accent-primary/5' : 'border-border bg-bg-card'
-                    )}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <p className="text-sm font-medium break-all">{asset.title}</p>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                          <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-text-secondary">{asset.container || 'unknown'}</span>
-                          <span
-                            className={cn(
-                              'rounded-full px-2 py-0.5',
-                              blocked
-                                ? 'bg-danger/10 text-danger'
-                                : asset.recommended_mode === 'direct_play'
-                                  ? 'bg-success/10 text-success'
-                                  : 'bg-warning/10 text-warning'
-                            )}
-                          >
-                            {modeLabel(asset)}
-                          </span>
-                          <span
-                            className={cn(
-                              'rounded-full px-2 py-0.5',
-                              asset.probe_status === 'ready'
-                                ? 'bg-success/10 text-success'
-                                : asset.probe_status === 'failed'
-                                  ? 'bg-danger/10 text-danger'
-                                  : 'bg-bg-secondary text-text-secondary'
-                            )}
-                          >
-                            {probeStatusLabel(asset.probe_status)}
-                          </span>
-                          <span
-                            className={cn(
-                              'rounded-full px-2 py-0.5',
-                              asset.hls_status === 'ready'
-                                ? 'bg-success/10 text-success'
-                                : asset.hls_status === 'error'
-                                  ? 'bg-danger/10 text-danger'
-                                  : 'bg-accent-cyan/10 text-accent-cyan'
-                            )}
-                          >
-                            {hlsStatusLabel(asset.hls_status)}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-text-muted">
-                          <span>{formatBytes(asset.size)}</span>
-                          <span>{asset.relative_path}</span>
-                          <span>更新于 {formatUpdatedAt(asset.modified_at)}</span>
-                        </div>
-                        {blocked ? (
-                          <div className="flex items-start gap-2 rounded-lg bg-danger/8 px-3 py-2 text-xs text-danger">
-                            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            <span className="break-all">片源不可用于同看：{blockReason(asset)}</span>
-                          </div>
-                        ) : asset.last_error ? (
-                          <div className="flex items-start gap-2 rounded-lg bg-danger/8 px-3 py-2 text-xs text-danger">
-                            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            <span className="break-all">{trimError(asset.last_error)}</span>
-                          </div>
-                        ) : null}
-                      </div>
+                <h2 className="text-3xl font-black text-white">大厅动态</h2>
+              </div>
+              <div className="flex flex-col items-end">
+                <span className="text-xs font-bold text-white/40 mb-1">数据快照时间</span>
+                <span className="rounded-full bg-white/5 border border-white/10 px-4 py-1.5 text-xs font-bold text-white/70">
+                  {lobby?.generated_at ? formatUpdatedAt(lobby.generated_at) : '等待数据'}
+                </span>
+              </div>
+            </div>
 
-                      <div className="flex shrink-0 flex-wrap gap-2">
-                        <button
-                          onClick={() => setSelectedMediaId(asset.media_id)}
-                          disabled={blocked}
-                          className={cn(
-                            'rounded-lg px-3 py-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60',
-                            selected
-                              ? 'bg-accent-cyan text-white'
-                              : 'bg-bg-secondary text-text-secondary hover:text-text-primary'
-                          )}
-                        >
-                          {blocked ? '片源不可用' : selected ? '当前待建房片源' : '设为待建房片源'}
-                        </button>
-                        {asset.recommended_mode === 'pretranscode_hls' && (
-                          <button
-                            onClick={() => handlePrepare(asset)}
-                            disabled={preparing || blocked}
-                            className="rounded-lg bg-bg-secondary px-3 py-2 text-xs text-text-secondary hover:text-text-primary disabled:opacity-60"
-                          >
-                            {preparing ? '准备中...' : asset.hls_status === 'ready' ? '重建 HLS' : '准备 HLS'}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleCreateRoom(asset)}
-                          disabled={creating || blocked}
-                          className="rounded-lg bg-accent-primary px-3 py-2 text-xs font-medium text-white hover:bg-accent-primary/90 disabled:opacity-60"
-                        >
-                          {blocked ? '不可建房' : '直接建房'}
-                        </button>
+            {incomingRoomInvitations.length > 0 && (
+              <div className="mb-8 rounded-[1.5rem] border border-accent-gold/25 bg-white/[0.02] p-6 shadow-inner backdrop-blur-md">
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="flex items-center gap-3 text-lg font-black text-white/90 tracking-wide">
+                    收到的房间邀请
+                    <span className="rounded-full bg-accent-gold/20 text-accent-gold px-3 py-1 text-xs">{incomingRoomInvitations.length}</span>
+                  </h3>
+                </div>
+                <div className="space-y-4">
+                  {incomingRoomInvitations.map((inv) => (
+                    <div key={inv.invitation_id} className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                      <div className="min-w-0 space-y-1.5">
+                        <p className="font-bold text-white">{inv.sender_username} 邀请你进入「{inv.room_name}」</p>
+                        {inv.message && <p className="text-sm font-medium text-white/50">留言：{inv.message}</p>}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <Link to={`/watch/${inv.room_id}`} className="rounded-xl bg-white/10 px-4 py-2 text-xs font-bold text-white hover:bg-white/20 transition-colors">看房间</Link>
+                        <button onClick={() => void handleRoomInvitation(inv.invitation_id, inv.room_id, 'accept')} disabled={roomInviteActionId === inv.invitation_id} className="rounded-xl bg-accent-primary px-4 py-2 text-xs font-bold text-white hover:bg-accent-primary/80 disabled:opacity-50 transition-colors">接受</button>
+                        <button onClick={() => void handleRoomInvitation(inv.invitation_id, inv.room_id, 'dismiss')} disabled={roomInviteActionId === inv.invitation_id} className="rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-xs font-bold text-white/80 hover:bg-white/10 disabled:opacity-50 transition-colors">忽略</button>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-4">
-          <div className="rounded-xl border border-border bg-bg-card p-4 space-y-4">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-accent-secondary" />
-              <h2 className="text-lg font-semibold">创建房间</h2>
-            </div>
-
-            <div className="rounded-xl bg-bg-secondary px-4 py-3 text-xs text-text-secondary">
-              <p className="font-medium text-text-primary">如何开始</p>
-              <p className="mt-1">从左侧点击“设为待建房片源”，再填写主持人和房间名。解析失败的文件只会展示错误，不会进入同看流程。</p>
-              <p className="mt-2">
-                {user
-                  ? `当前已登录账号 ${user.username}，新房间会自动绑定到这个账号。`
-                  : '当前未登录，仍然可以建房，但房间只会记录昵称，不会绑定到账号。'}
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs text-text-muted">主持人</label>
-                <input
-                  value={hostName}
-                  onChange={(e) => setHostName(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-primary"
-                  placeholder="你的昵称"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-text-muted">房间名</label>
-                <input
-                  value={roomName}
-                  onChange={(e) => setRoomName(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-primary"
-                  placeholder="例如：今晚一起看 Maid-san"
-                />
-              </div>
-              <div className="rounded-lg bg-bg-secondary px-3 py-3 text-xs text-text-secondary">
-                {selectedAsset ? (
-                  <>
-                    <div className="flex items-center gap-2">
-                      {selectedAssetBlocked ? (
-                        <AlertCircle className="h-4 w-4 text-danger" />
-                      ) : (
-                        <CheckCircle2 className="h-4 w-4 text-success" />
-                      )}
-                      <p className="font-medium text-text-primary">当前待建房片源</p>
-                    </div>
-                    <p className="mt-2 break-all">{selectedAsset.title}</p>
-                    <p className="mt-2 text-text-muted">
-                      方案：{selectedAsset.recommended_mode === 'direct_play' ? '直放' : selectedAsset.recommended_mode === 'pretranscode_hls' ? '预转 HLS' : '不可播放'}
-                    </p>
-                    <p className="mt-2 text-text-muted">房主身份：{hostName.trim() || '未填写'}{user ? `，账号归属 ${user.username}` : '，当前为匿名房间'}</p>
-                    {selectedAssetBlocked && (
-                      <p className="mt-2 text-danger">当前片源不可建房：{blockReason(selectedAsset)}</p>
-                    )}
-                  </>
-                ) : (
-                  '先从左侧点“设为待建房片源”，再创建房间。'
-                )}
-              </div>
-              <button
-                onClick={() => handleCreateRoom(selectedAsset)}
-                disabled={!selectedAsset || selectedAssetBlocked || creating}
-                className="w-full rounded-lg bg-accent-cyan px-3 py-2.5 text-sm font-medium text-white hover:bg-accent-cyan/90 disabled:opacity-60"
-              >
-                {creating ? '创建中...' : selectedAssetBlocked ? '当前片源不可建房' : '用当前片源建房'}
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border bg-bg-card p-4 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">放映大厅</h2>
-                <p className="mt-1 text-xs text-text-muted">
-                  当前在线 {onlineUsers.length} 人 · 活跃放映厅 {rooms.filter((item) => item.participant_count > 0).length} 个
-                </p>
-              </div>
-              <span className="text-[11px] text-text-muted">
-                {lobby?.generated_at ? `刷新于 ${formatUpdatedAt(lobby.generated_at)}` : '等待大厅数据'}
-              </span>
-            </div>
-
-            {lobbyLoadError && lobby && (
-              <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-warning/20 bg-warning/8 px-4 py-3 text-sm text-warning">
-                <div className="flex min-w-0 items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>大厅刷新失败，当前展示的是上次成功加载的在线状态和房间列表。</span>
+                  ))}
                 </div>
-                <button
-                  onClick={() => void loadLobbySnapshot()}
-                  className="shrink-0 rounded-lg bg-warning px-3 py-2 text-xs font-medium text-white hover:bg-warning/90"
-                >
-                  重试大厅
-                </button>
               </div>
             )}
 
             {lobbyLoadError && !lobby ? (
-              <div className="space-y-3 rounded-xl border border-danger/20 bg-danger/5 p-5 text-sm text-danger">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>放映大厅暂时加载失败：{trimError(lobbyLoadError)}</span>
-                </div>
-                <button
-                  onClick={() => void loadLobbySnapshot()}
-                  className="inline-flex rounded-lg bg-danger px-3 py-2 text-xs font-medium text-white hover:bg-danger/90"
-                >
+              <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-danger/30 bg-danger/10 p-8 text-center backdrop-blur-md">
+                <p className="text-base font-bold text-danger">放映大厅暂时加载失败：{trimError(lobbyLoadError)}</p>
+                <button onClick={() => void loadLobbySnapshot()} className="rounded-xl bg-danger px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-danger/20 transition-all hover:bg-danger/90 hover:scale-105">
                   重试大厅
                 </button>
               </div>
             ) : (
-              <>
-                {onlineUsers.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-text-muted">
-                    目前还没有登录用户在大厅或房间里在线。
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {onlineUsers.slice(0, 8).map((onlineUser) => {
-                      const isSelf = Boolean(user && onlineUser.user_id === user.id)
-                      return (
-                        <div key={onlineUser.user_id} className="rounded-lg bg-bg-secondary px-3 py-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-medium text-text-primary">{onlineUser.username}</p>
-                                {isSelf && <span className="rounded-full bg-accent-cyan/10 px-2 py-0.5 text-[10px] text-accent-cyan">你</span>}
-                                {onlineUser.is_friend && !isSelf && <span className="rounded-full bg-accent-primary/10 px-2 py-0.5 text-[10px] text-accent-primary">好友</span>}
-                                <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] text-success">在线</span>
-                              </div>
-                              <p className="mt-1 text-xs text-text-secondary">{socialStatusText(onlineUser)}</p>
-                              <p className="mt-1 text-[11px] text-text-muted">最近心跳 {formatRelativeTime(onlineUser.last_seen_at)}</p>
-                            </div>
-                            <div className="flex shrink-0 flex-wrap gap-2">
-                              {onlineUser.current_room_id && (
-                                <Link
-                                  to={`/watch/${onlineUser.current_room_id}`}
-                                  className="rounded-lg bg-bg-card px-3 py-2 text-xs text-text-secondary hover:text-text-primary"
-                                >
-                                  去房间
-                                </Link>
-                              )}
-                              {user && !isSelf && !onlineUser.is_friend && (
-                                <button
-                                  onClick={() => void handleSendFriendRequest(onlineUser.username)}
-                                  disabled={friendBusy}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-accent-primary px-3 py-2 text-xs font-medium text-white hover:bg-accent-primary/90 disabled:opacity-60"
-                                >
-                                  <UserPlus className="h-3.5 w-3.5" />
-                                  加好友
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-medium text-text-primary">活跃放映厅</h3>
-                    <span className="text-[11px] text-text-muted">按在线人数和最近活跃排序</span>
-                  </div>
+              <div className="grid lg:grid-cols-2 gap-12">
+                {/* Active Rooms */}
+                <div className="space-y-6">
+                  <h3 className="flex items-center gap-3 text-lg font-black text-white/90 tracking-wide border-b border-white/10 pb-4">
+                    活跃放映室
+                    <span className="rounded-full bg-accent-gold/20 text-accent-gold px-3 py-1 text-xs">{rooms.length}</span>
+                  </h3>
                   {rooms.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-text-muted">
-                      还没有放映厅，先建一个试试。
+                    <div className="rounded-[1.5rem] border border-dashed border-white/10 p-12 text-center flex flex-col items-center justify-center gap-4 bg-white/[0.01]">
+                      <Film className="h-12 w-12 text-white/10" />
+                      <span className="text-base font-bold text-white/30">当前没有放映室正在播放</span>
+                      <button onClick={() => setActiveTab('create')} className="mt-2 text-accent-gold hover:text-accent-gold/80 font-bold text-sm underline underline-offset-4">去创建一个吧</button>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {rooms.slice(0, 5).map((room) => (
-                        <Link
-                          key={`hall-${room.room_id}`}
-                          to={`/watch/${room.room_id}`}
-                          className="block rounded-lg bg-bg-secondary px-3 py-3 transition-colors hover:bg-bg-hover"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-text-primary">{room.name}</p>
-                              <p className="mt-1 text-xs text-text-muted">
-                                房主：{room.host_name || '未命名'} · {room.state.paused ? '暂停中' : '播放中'}
-                              </p>
-                              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-text-muted">
-                                <span className="rounded-full bg-bg-card px-2 py-0.5">在线 {room.participant_count} 人</span>
-                                {room.participant_usernames.slice(0, 3).map((name) => (
-                                  <span key={`${room.room_id}-${name}`} className="rounded-full bg-bg-card px-2 py-0.5">{name}</span>
-                                ))}
-                              </div>
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                      {rooms.map(room => (
+                         <Link key={room.room_id} to={`/watch/${room.room_id}`} className="block group rounded-2xl border border-white/5 bg-white/[0.03] p-5 transition-all hover:bg-white/[0.06] hover:border-accent-gold/30 hover:shadow-[0_0_20px_rgba(245,158,11,0.15)] hover:-translate-y-1">
+                            <div className="flex justify-between items-start gap-4">
+                               <div className="min-w-0 space-y-3">
+                                 <p className="font-bold text-lg text-white truncate group-hover:text-accent-gold transition-colors">{room.name}</p>
+                                 <div className="flex items-center gap-2">
+                                   <div className="h-6 w-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-black text-white">{room.host_name.charAt(0).toUpperCase()}</div>
+                                   <p className="text-sm font-medium text-white/60">房主: <span className="text-white/80 font-bold">{room.host_name}</span></p>
+                                 </div>
+                               </div>
+                               <div className="flex flex-col items-end gap-3 shrink-0">
+                                  <span className={cn('rounded-lg px-3 py-1.5 text-xs font-black tracking-wide shadow-sm', room.state.paused ? 'bg-warning/20 text-warning border border-warning/30' : 'bg-success/20 text-success border border-success/30')}>
+                                    {room.state.paused ? '⏸ 暂停' : '▶ 播放中'}
+                                  </span>
+                                  <span className="flex items-center gap-1.5 rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-xs font-bold text-white/70">
+                                    <Users className="h-3.5 w-3.5" />
+                                    {room.participant_count}
+                                  </span>
+                               </div>
                             </div>
-                            <span className="shrink-0 text-[11px] text-text-muted">{formatRelativeTime(room.updated_at)}</span>
-                          </div>
-                        </Link>
+                         </Link>
                       ))}
                     </div>
                   )}
                 </div>
-              </>
-            )}
-          </div>
 
-          <div className="rounded-xl border border-border bg-bg-card p-4 space-y-4">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-accent-cyan" />
-              <h2 className="text-lg font-semibold">好友与聊天</h2>
-            </div>
-
-            {!user ? (
-              <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-text-muted">
-                登录后就会出现在在线列表里，也可以加好友、收发私聊。
-              </div>
-            ) : (
-              <>
-                <div className="flex gap-2">
-                  <input
-                    value={friendUsername}
-                    onChange={(event) => setFriendUsername(event.target.value)}
-                    className="flex-1 rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-primary"
-                    placeholder="输入用户名发送好友申请"
-                  />
-                  <button
-                    onClick={() => void handleSendFriendRequest()}
-                    disabled={friendBusy || !friendUsername.trim()}
-                    className="inline-flex items-center gap-1 rounded-lg bg-accent-primary px-3 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 disabled:opacity-60"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    添加
-                  </button>
-                </div>
-
-                {(incomingRoomInvitations.length > 0 || outgoingRoomInvitations.length > 0) && (
-                  <div className="space-y-3 rounded-xl bg-bg-secondary p-3">
-                    {incomingRoomInvitations.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-text-primary">收到的房间邀请</p>
-                        {incomingRoomInvitations.map((invitation) => (
-                          <div key={invitation.invitation_id} className="rounded-lg bg-bg-card px-3 py-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-text-primary">
-                                  {invitation.sender_username} 邀请你进入「{invitation.room_name || invitation.room_id}」
-                                </p>
-                                {invitation.message && (
-                                  <p className="mt-1 text-xs text-text-secondary">留言：{invitation.message}</p>
-                                )}
-                                <p className="mt-1 text-[11px] text-text-muted">{formatRelativeTime(invitation.updated_at)}</p>
-                              </div>
-                              <div className="flex shrink-0 gap-2">
-                                <Link
-                                  to={`/watch/${invitation.room_id}`}
-                                  className="rounded-lg bg-bg-secondary px-3 py-2 text-xs text-text-secondary hover:text-text-primary"
-                                >
-                                  看房间
-                                </Link>
-                                <button
-                                  onClick={() => void handleRoomInvitation(invitation.invitation_id, invitation.room_id, 'accept')}
-                                  disabled={roomInviteActionId === invitation.invitation_id}
-                                  className="rounded-lg bg-accent-cyan px-3 py-2 text-xs font-medium text-white hover:bg-accent-cyan/90 disabled:opacity-60"
-                                >
-                                  进入房间
-                                </button>
-                                <button
-                                  onClick={() => void handleRoomInvitation(invitation.invitation_id, invitation.room_id, 'dismiss')}
-                                  disabled={roomInviteActionId === invitation.invitation_id}
-                                  className="rounded-lg bg-bg-secondary px-3 py-2 text-xs text-text-secondary hover:text-text-primary disabled:opacity-60"
-                                >
-                                  忽略
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {outgoingRoomInvitations.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-text-primary">已发出的房间邀请</p>
-                        <div className="flex flex-wrap gap-2">
-                          {outgoingRoomInvitations.map((invitation) => (
-                            <Link
-                              key={invitation.invitation_id}
-                              to={`/watch/${invitation.room_id}`}
-                              className="rounded-full bg-bg-card px-3 py-1 text-xs text-text-secondary hover:text-text-primary"
-                            >
-                              {invitation.recipient_username} · {invitation.room_name || invitation.room_id}
-                            </Link>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {(incomingRequests.length > 0 || outgoingRequests.length > 0) && (
-                  <div className="space-y-3 rounded-xl bg-bg-secondary p-3">
-                    {incomingRequests.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-text-primary">收到的好友申请</p>
-                        {incomingRequests.map((request) => (
-                          <div key={request.request_id} className="flex items-center justify-between gap-3 rounded-lg bg-bg-card px-3 py-2">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-text-primary">{request.requester_username}</p>
-                              <p className="text-[11px] text-text-muted">{formatRelativeTime(request.updated_at)}</p>
-                            </div>
-                            <div className="flex shrink-0 gap-2">
-                              <button
-                                onClick={() => void handleIncomingRequest(request.request_id, 'accept')}
-                                disabled={friendActionId === request.request_id}
-                                className="inline-flex items-center gap-1 rounded-lg bg-success px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                                通过
-                              </button>
-                              <button
-                                onClick={() => void handleIncomingRequest(request.request_id, 'reject')}
-                                disabled={friendActionId === request.request_id}
-                                className="inline-flex items-center gap-1 rounded-lg bg-danger px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                                拒绝
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {outgoingRequests.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-text-primary">已发出的申请</p>
-                        <div className="flex flex-wrap gap-2">
-                          {outgoingRequests.map((request) => (
-                            <span key={request.request_id} className="rounded-full bg-bg-card px-3 py-1 text-xs text-text-secondary">
-                              {request.target_username}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="grid gap-3 xl:grid-cols-[220px_1fr]">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-text-primary">好友列表</p>
-                      <span className="text-[11px] text-text-muted">{friends.length} 人</span>
+                {/* Online Users */}
+                <div className="space-y-6">
+                  <h3 className="flex items-center gap-3 text-lg font-black text-white/90 tracking-wide border-b border-white/10 pb-4">
+                    在线用户
+                    <span className="rounded-full bg-accent-cyan/20 text-accent-cyan px-3 py-1 text-xs">{onlineUsers.length}</span>
+                  </h3>
+                  {onlineUsers.length === 0 ? (
+                    <div className="rounded-[1.5rem] border border-dashed border-white/10 p-12 text-center text-base font-bold text-white/30 bg-white/[0.01]">
+                      静悄悄的
                     </div>
-                    {friends.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-text-muted">
-                        还没有好友。你可以先从在线列表里加人。
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {friends.map((friend) => (
-                          <button
-                            key={friend.user_id}
-                            onClick={() => setSelectedFriendId(friend.user_id)}
-                            className={cn(
-                              'w-full rounded-lg border px-3 py-3 text-left transition-colors',
-                              selectedFriendId === friend.user_id
-                                ? 'border-accent-primary bg-accent-primary/6'
-                                : 'border-border bg-bg-secondary hover:bg-bg-hover'
-                            )}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-text-primary">{friend.username}</p>
-                                <p className="mt-1 truncate text-[11px] text-text-muted">
-                                  {friend.is_online ? socialStatusText(friend) : `最近在线 ${formatRelativeTime(friend.last_seen_at)}`}
-                                </p>
-                              </div>
-                              <div className="shrink-0">
-                                {friend.unread_count > 0 ? (
-                                  <span className="rounded-full bg-accent-primary px-2 py-0.5 text-[10px] font-medium text-white">
-                                    {friend.unread_count}
-                                  </span>
-                                ) : friend.is_online ? (
-                                  <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] text-success">在线</span>
-                                ) : null}
-                              </div>
+                  ) : (
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                       {onlineUsers.map((onlineUser) => {
+                          const isSelf = Boolean(user && onlineUser.user_id === user.id)
+                          return (
+                            <div key={onlineUser.user_id} className="group flex flex-col justify-between rounded-2xl border border-white/5 bg-white/[0.03] p-5 shadow-sm hover:bg-white/[0.06] hover:border-white/10 transition-all h-[140px]">
+                               <div>
+                                 <div className="flex items-center gap-3 min-w-0 mb-3">
+                                   <div className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full bg-gradient-to-br from-white/10 to-white/5 border border-white/10 shadow-inner font-black text-lg text-white">
+                                     {onlineUser.username.charAt(0).toUpperCase()}
+                                   </div>
+                                   <div className="min-w-0 flex flex-col">
+                                     <div className="flex items-center gap-2">
+                                       <span className="font-bold text-base text-white truncate">{onlineUser.username}</span>
+                                     </div>
+                                     <p className="text-xs font-medium text-white/50 truncate mt-1">{socialStatusText(onlineUser)}</p>
+                                   </div>
+                                 </div>
+                               </div>
+                               <div className="flex gap-2 shrink-0 justify-end">
+                                  {isSelf && <span className="rounded-lg bg-accent-cyan/20 px-3 py-1.5 text-xs font-bold text-accent-cyan">这是你</span>}
+                                  {!isSelf && onlineUser.is_friend && <span className="rounded-lg bg-accent-primary/20 px-3 py-1.5 text-xs font-bold text-accent-primary">我的好友</span>}
+                                  {onlineUser.current_room_id && (
+                                     <Link to={`/watch/${onlineUser.current_room_id}`} className="rounded-xl bg-white/10 px-4 py-2 text-xs font-bold text-white hover:bg-white/20 transition-colors shadow-sm">去围观</Link>
+                                  )}
+                                  {user && !isSelf && !onlineUser.is_friend && (
+                                     <button onClick={() => void handleSendFriendRequest(onlineUser.username)} disabled={friendBusy} className="rounded-xl bg-accent-primary px-4 py-2 text-xs font-bold text-white hover:bg-accent-primary/80 transition-colors shadow-lg shadow-accent-primary/20">加好友</button>
+                                  )}
+                               </div>
                             </div>
-                            {friend.last_message_preview && (
-                              <p className="mt-2 truncate text-[11px] text-text-secondary">{friend.last_message_preview}</p>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    {selectedFriend ? (
-                      <>
-                        <div className="rounded-lg bg-bg-secondary px-3 py-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-medium text-text-primary">{selectedFriend.username}</p>
-                              <p className="mt-1 text-[11px] text-text-muted">
-                                {selectedFriend.is_online ? socialStatusText(selectedFriend) : `最近在线 ${formatRelativeTime(selectedFriend.last_seen_at)}`}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 flex-wrap gap-2">
-                              {selectedFriend.current_room_id && (
-                                <Link
-                                  to={`/watch/${selectedFriend.current_room_id}`}
-                                  className="rounded-lg bg-bg-card px-3 py-2 text-xs text-text-secondary hover:text-text-primary"
-                                >
-                                  去 TA 的房间
-                                </Link>
-                              )}
-                              <button
-                                onClick={() => void handleRemoveFriend()}
-                                disabled={removingFriendId === selectedFriend.user_id}
-                                className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger hover:bg-danger/15 disabled:opacity-60"
-                              >
-                                {removingFriendId === selectedFriend.user_id ? '移除中...' : '删除好友'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl border border-border bg-bg-secondary p-3">
-                          {chatLoading ? (
-                            <div className="flex items-center justify-center py-12">
-                              <Loader2 className="h-5 w-5 animate-spin text-accent-primary" />
-                            </div>
-                          ) : chatMessages.length === 0 ? (
-                            <div className="py-12 text-center text-sm text-text-muted">
-                              还没有聊天记录，先打个招呼吧。
-                            </div>
-                          ) : (
-                            <div ref={chatListRef} className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                              {chatMessages.map((message) => (
-                                <div
-                                  key={message.message_id}
-                                  className={cn('flex', message.is_mine ? 'justify-end' : 'justify-start')}
-                                >
-                                  <div
-                                    className={cn(
-                                      'max-w-[85%] rounded-2xl px-3 py-2 text-sm',
-                                      message.is_mine
-                                        ? 'bg-accent-primary text-white'
-                                        : 'bg-bg-card text-text-primary'
-                                    )}
-                                  >
-                                    <p className="break-words">{message.body}</p>
-                                    <p className={cn('mt-1 text-[10px]', message.is_mine ? 'text-white/70' : 'text-text-muted')}>
-                                      {message.is_mine ? '我' : message.sender_username} · {formatRelativeTime(message.created_at)}
-                                    </p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex gap-2">
-                          <input
-                            value={chatDraft}
-                            onChange={(event) => setChatDraft(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' && !event.shiftKey) {
-                                event.preventDefault()
-                                void handleSendChatMessage()
-                              }
-                            }}
-                            className="flex-1 rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm outline-none focus:border-accent-primary"
-                            placeholder={`给 ${selectedFriend.username} 发消息`}
-                          />
-                          <button
-                            onClick={() => void handleSendChatMessage()}
-                            disabled={sendingMessage || !chatDraft.trim()}
-                            className="rounded-lg bg-accent-cyan px-4 py-2 text-sm font-medium text-white hover:bg-accent-cyan/90 disabled:opacity-60"
-                          >
-                            {sendingMessage ? '发送中...' : '发送'}
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-border px-4 py-10 text-sm text-text-muted">
-                        选择一个好友后，就可以直接在这里聊天。
-                      </div>
-                    )}
-                  </div>
+                          )
+                       })}
+                     </div>
+                  )}
                 </div>
-              </>
+              </div>
             )}
           </div>
+        </div>
+      )}
 
-          <div className="rounded-xl border border-border bg-bg-card p-4 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">最近观看</h2>
-                <p className="mt-1 text-xs text-text-muted">
-                  {user ? '会自动记录当前账号在同看房间里的最近进度。' : '登录后会自动记录你的观看进度。'}
-                </p>
+      {/* Tab Content: Create Room */}
+      {activeTab === 'create' && (
+        <div className="animate-in fade-in slide-in-from-bottom-8 duration-500 grid gap-8 xl:grid-cols-[1fr_450px]">
+          {/* Left Column - Library */}
+          <section className="space-y-6">
+            <div className="flex items-center justify-between bg-black/40 border border-white/10 p-6 rounded-[2rem] backdrop-blur-xl">
+              <div className="flex items-center gap-4">
+                <div className="rounded-2xl bg-gradient-to-br from-accent-primary/20 to-accent-secondary/20 p-3 border border-accent-primary/30 shadow-lg shadow-accent-primary/20">
+                  <Film className="h-6 w-6 text-accent-primary" />
+                </div>
+                <h2 className="text-2xl font-black text-white tracking-wide">本地片源库</h2>
+                <span className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-bold text-white/80 backdrop-blur-md shadow-inner">{assets.length} 个文件</span>
               </div>
-              {user && <span className="text-xs text-text-muted">{history.length} 条</span>}
             </div>
 
-            {!user ? (
-              <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-text-muted">
-                当前未登录，观看记录不会保存到账号。
+            {loading ? (
+              <div className="flex items-center justify-center py-32 rounded-[2rem] border border-white/5 bg-white/[0.02] backdrop-blur-md shadow-inner">
+                <div className="relative flex flex-col items-center gap-6">
+                  <Loader2 className="h-14 w-14 animate-spin text-accent-primary" />
+                  <div className="absolute top-0 animate-pulse rounded-full bg-accent-primary/50 blur-2xl h-14 w-14" />
+                  <p className="text-white/50 font-bold tracking-widest">扫描中...</p>
+                </div>
               </div>
-            ) : historyLoadError && history.length === 0 ? (
-              <div className="space-y-3 rounded-lg border border-danger/20 bg-danger/5 px-4 py-5 text-sm text-danger">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>观看记录暂时加载失败：{trimError(historyLoadError)}</span>
+            ) : libraryLoadError && assets.length === 0 ? (
+              <div className="space-y-5 rounded-[2rem] border border-danger/30 bg-danger/10 p-8 shadow-inner backdrop-blur-md">
+                <div className="flex items-start gap-4">
+                  <AlertCircle className="h-8 w-8 text-danger shrink-0 drop-shadow-md" />
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-black text-danger">媒体库暂时加载失败：{trimError(libraryLoadError)}</h3>
+                  </div>
                 </div>
                 <button
-                  onClick={() => void loadLobbySnapshot()}
-                  className="inline-flex w-fit rounded-lg bg-danger px-3 py-2 text-xs font-medium text-white hover:bg-danger/90"
+                  onClick={() => void load(false)}
+                  className="rounded-xl bg-danger px-8 py-3 text-sm font-bold text-white shadow-xl shadow-danger/20 transition-all hover:bg-danger/90 hover:scale-105"
                 >
-                  重试记录
+                  重试媒体库
                 </button>
               </div>
-            ) : history.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-text-muted">
-                还没有观看记录。进入房间播放一会儿，这里就会出现最近进度。
+            ) : assets.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-[2rem] border border-white/5 bg-white/[0.02] p-24 text-center shadow-inner backdrop-blur-md">
+                <div className="rounded-full bg-white/5 p-6 mb-6">
+                  <Film className="h-16 w-16 text-white/20" />
+                </div>
+                <p className="text-xl font-bold text-white/70">当前还没有可用片源</p>
+                <p className="mt-3 text-sm text-white/40 max-w-sm">下载目录里有视频文件后，这里会自动识别并给出播放建议。</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {historyLoadError && (
-                  <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-warning/20 bg-warning/8 px-4 py-3 text-sm text-warning">
-                    <div className="flex min-w-0 items-start gap-2">
-                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                      <span>观看记录刷新失败，当前展示的是上次成功加载的进度快照。</span>
+              <div className="space-y-5">
+                {libraryLoadError && (
+                  <div className="flex items-center justify-between gap-4 rounded-2xl border border-warning/30 bg-warning/10 p-5 backdrop-blur-md shadow-inner">
+                    <div className="flex items-center gap-3">
+                      <AlertCircle className="h-5 w-5 text-warning shrink-0" />
+                      <span className="font-bold text-warning text-sm">媒体库刷新失败，当前展示的是历史快照。</span>
                     </div>
-                    <button
-                      onClick={() => void loadLobbySnapshot()}
-                      className="shrink-0 rounded-lg bg-warning px-3 py-2 text-xs font-medium text-white hover:bg-warning/90"
-                    >
-                      重试记录
+                    <button onClick={() => void load(false)} className="rounded-xl bg-warning px-5 py-2 text-xs font-bold text-black shadow-lg transition-all hover:bg-warning/90 hover:scale-105">
+                      重试
                     </button>
                   </div>
                 )}
-                {history.map((entry) => (
-                  <Link
-                    key={entry.entry_id}
-                    to={entry.room_id ? `/watch/${entry.room_id}` : '/watch'}
-                    className="block rounded-lg bg-bg-secondary px-3 py-3 transition-colors hover:bg-bg-hover"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-text-primary">{entry.media_title || entry.media_id || '未知片源'}</p>
-                        <p className="mt-1 text-xs text-text-muted">
-                          房间：{entry.room_name || entry.room_id || '未命名'}
-                        </p>
-                        <p className="mt-1 text-xs text-text-muted">
-                          进度：{formatPosition(entry.position_seconds)}
-                          {entry.duration_seconds > 0 ? ` / ${formatPosition(entry.duration_seconds)}` : ''}
-                          {entry.paused ? ' · 已暂停' : ' · 播放中'}
-                        </p>
+                
+                <div className="grid grid-cols-1 gap-4">
+                  {assets.map((asset) => {
+                    const selected = selectedMediaId === asset.media_id
+                    const preparing = preparingId === asset.media_id || asset.hls_status === 'preparing' || asset.hls_status === 'queued'
+                    const blocked = isBlocked(asset)
+                    return (
+                      <div
+                        key={asset.media_id}
+                        className={cn(
+                          'group relative overflow-hidden rounded-[1.5rem] border p-6 shadow-sm transition-all duration-300 backdrop-blur-xl',
+                          selected ? 'border-accent-cyan/40 bg-accent-cyan/10 shadow-[0_0_30px_rgba(0,242,254,0.1)] scale-[1.01]' : 'border-white/5 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] hover:shadow-xl hover:-translate-y-0.5'
+                        )}
+                      >
+                        {selected && <div className="absolute inset-0 bg-gradient-to-r from-accent-cyan/10 via-transparent to-transparent pointer-events-none" />}
+                        {selected && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-accent-cyan shadow-[0_0_15px_#00f2fe]" />}
+                        
+                        <div className="relative z-10 flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
+                          <div className="flex-1 space-y-4 min-w-0">
+                            <p className="text-lg font-bold text-white leading-snug break-all drop-shadow-md">
+                              {asset.title}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-lg border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white shadow-inner">{asset.container || 'unknown'}</span>
+                              <span
+                                className={cn(
+                                  'rounded-lg border px-2.5 py-1 text-[11px] font-bold shadow-sm backdrop-blur-md',
+                                  blocked
+                                    ? 'border-danger/30 bg-danger/20 text-danger'
+                                    : asset.recommended_mode === 'direct_play'
+                                      ? 'border-success/30 bg-success/20 text-success'
+                                      : 'border-warning/30 bg-warning/20 text-warning'
+                                )}
+                              >
+                                {modeLabel(asset)}
+                              </span>
+                              <span
+                                className={cn(
+                                  'rounded-lg border px-2.5 py-1 text-[11px] font-bold shadow-sm backdrop-blur-md',
+                                  asset.probe_status === 'ready'
+                                    ? 'border-success/30 bg-success/20 text-success'
+                                    : asset.probe_status === 'failed'
+                                      ? 'border-danger/30 bg-danger/20 text-danger'
+                                      : 'border-white/10 bg-white/5 text-white/70'
+                                )}
+                              >
+                                {probeStatusLabel(asset.probe_status)}
+                              </span>
+                              <span
+                                className={cn(
+                                  'rounded-lg border px-2.5 py-1 text-[11px] font-bold shadow-sm backdrop-blur-md',
+                                  asset.hls_status === 'ready'
+                                    ? 'border-success/30 bg-success/20 text-success'
+                                    : asset.hls_status === 'error'
+                                      ? 'border-danger/30 bg-danger/20 text-danger'
+                                      : 'border-accent-cyan/30 bg-accent-cyan/20 text-accent-cyan'
+                                )}
+                              >
+                                {hlsStatusLabel(asset.hls_status)}
+                              </span>
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-3 text-[12px] font-medium text-white/50">
+                              <span className="flex items-center gap-1 rounded-md bg-black/30 px-2 py-1"><Clock3 className="h-3 w-3" />{formatUpdatedAt(asset.modified_at)}</span>
+                              <span className="rounded-md bg-black/30 px-2 py-1">{formatBytes(asset.size)}</span>
+                              <span className="rounded-md bg-black/30 px-2 py-1 truncate max-w-[250px]" title={asset.relative_path}>{asset.relative_path}</span>
+                            </div>
+
+                            {blocked ? (
+                              <div className="inline-flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/10 px-4 py-2.5 text-xs font-bold text-danger backdrop-blur-md">
+                                <AlertCircle className="h-4 w-4 shrink-0" />
+                                <span className="break-all">{blockReason(asset)}</span>
+                              </div>
+                            ) : asset.last_error ? (
+                              <div className="inline-flex items-start gap-2 rounded-xl border border-danger/20 bg-danger/10 px-4 py-2.5 text-xs font-bold text-danger backdrop-blur-md">
+                                <AlertCircle className="h-4 w-4 shrink-0" />
+                                <span className="break-all">{trimError(asset.last_error)}</span>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row md:flex-col gap-3 shrink-0 w-full md:w-[160px]">
+                            <button
+                              onClick={() => setSelectedMediaId(asset.media_id)}
+                              disabled={blocked}
+                              className={cn(
+                                'w-full rounded-xl border px-6 py-3 text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm',
+                                selected
+                                  ? 'border-accent-cyan/50 bg-accent-cyan text-black shadow-[0_0_15px_rgba(0,242,254,0.4)] hover:bg-accent-cyan/90 hover:scale-105'
+                                  : 'border-white/10 bg-white/5 text-white hover:bg-white/10 hover:border-white/30 hover:scale-105'
+                              )}
+                            >
+                              {blocked ? '片源不可用' : selected ? '已设为片源' : '设为待建房片源'}
+                            </button>
+                            {asset.recommended_mode === 'pretranscode_hls' && (
+                              <button
+                                onClick={() => handlePrepare(asset)}
+                                disabled={preparing || blocked}
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-white/10 hover:border-white/30 hover:scale-105 disabled:opacity-50"
+                              >
+                                {preparing ? '转码中...' : asset.hls_status === 'ready' ? '重新生成 HLS' : '生成 HLS'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="shrink-0 text-right text-[11px] text-text-muted">
-                        <p>{entry.playback_mode === 'hls' ? 'HLS' : '直放'}</p>
-                        <p className="mt-1">更新于 {formatUpdatedAt(entry.updated_at)}</p>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
+                    )
+                  })}
+                </div>
               </div>
             )}
-          </div>
+          </section>
 
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Clock3 className="h-4 w-4 text-accent-gold" />
-              <h2 className="text-lg font-semibold">{showMineOnly ? '我的房间' : '现有房间'}</h2>
-              <span className="text-xs text-text-muted">{visibleRooms.length} 个</span>
-              {user ? (
-                <div className="ml-auto flex items-center gap-2">
-                  <button
-                    onClick={() => setShowMineOnly(false)}
-                    className={cn(
-                      'rounded-full px-3 py-1 text-xs transition-colors',
-                      !showMineOnly
-                        ? 'bg-accent-primary/12 text-accent-primary'
-                        : 'bg-bg-secondary text-text-secondary hover:text-text-primary'
-                    )}
-                  >
-                    全部房间
-                  </button>
-                  <button
-                    onClick={() => setShowMineOnly(true)}
-                    className={cn(
-                      'rounded-full px-3 py-1 text-xs transition-colors',
-                      showMineOnly
-                        ? 'bg-accent-primary/12 text-accent-primary'
-                        : 'bg-bg-secondary text-text-secondary hover:text-text-primary'
-                    )}
-                  >
-                    我的房间
-                  </button>
-                </div>
-              ) : (
-                <span className="ml-auto text-xs text-text-muted">登录后可筛选你的房间</span>
-              )}
-            </div>
-
-            {roomsLoading && !loading ? (
-              <div className="flex items-center justify-center rounded-xl border border-dashed border-border p-6">
-                <Loader2 className="h-5 w-5 animate-spin text-accent-primary" />
-              </div>
-            ) : lobbyLoadError && !lobby ? (
-              <div className="space-y-3 rounded-xl border border-danger/20 bg-danger/5 p-6 text-sm text-danger">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>房间列表暂时不可用，因为大厅数据加载失败：{trimError(lobbyLoadError)}</span>
-                </div>
-                <button
-                  onClick={() => void loadLobbySnapshot()}
-                  className="inline-flex w-fit rounded-lg bg-danger px-3 py-2 text-xs font-medium text-white hover:bg-danger/90"
-                >
-                  重试大厅
-                </button>
-              </div>
-            ) : visibleRooms.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border p-6 text-sm text-text-muted">
-                {showMineOnly ? '你还没有创建过绑定到当前账号的房间。' : '还没有同看房间，建一个试试。'}
-              </div>
-            ) : (
-              sortedRooms.map((room) => (
-                <Link
-                  key={room.room_id}
-                  to={`/watch/${room.room_id}`}
-                  className="block rounded-xl border border-border bg-bg-card p-4 transition-colors hover:border-accent-primary/40"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className="text-sm font-medium">{room.name}</p>
-                      <p className="text-xs text-text-muted">房主：{room.host_name || '未命名'}</p>
-                      <p className="text-xs text-text-muted">
-                        账号归属：{room.owner_username || '匿名房间'}
-                        {user && room.owner_user_id === user.id ? ' · 这是你的房间' : ''}
-                      </p>
-                      <div className="flex flex-wrap gap-2 text-[11px]">
-                        <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-text-secondary">
-                          {room.state.playback_mode === 'hls' ? 'HLS 房间' : '直放房间'}
-                        </span>
-                        <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-text-secondary">
-                          {room.state.paused ? '已暂停' : '播放中'}
-                        </span>
-                        <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-text-secondary">
-                          在线 {room.participant_count} 人
-                        </span>
-                        {room.owner_username && (
-                          <span className="rounded-full bg-bg-secondary px-2 py-0.5 text-text-secondary">
-                            账号房主 {room.owner_username}
-                          </span>
-                        )}
-                        {user && room.owner_user_id === user.id && (
-                          <span className="rounded-full bg-accent-primary/10 px-2 py-0.5 text-accent-primary">
-                            我的房间
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right text-xs text-text-muted">
-                      <p>{room.room_id}</p>
-                      <p className="mt-1">更新于 {formatUpdatedAt(room.updated_at)}</p>
-                    </div>
+          {/* Right Column - Create Room Panel */}
+          <section>
+            <div className="sticky top-24 relative overflow-hidden rounded-[2rem] border border-white/10 bg-black/40 p-8 shadow-2xl backdrop-blur-2xl">
+              <div className="absolute top-0 right-0 -mr-20 -mt-20 h-64 w-64 rounded-full bg-accent-cyan/20 blur-[80px] pointer-events-none" />
+              <div className="absolute bottom-0 left-0 -ml-20 -mb-20 h-64 w-64 rounded-full bg-accent-primary/20 blur-[80px] pointer-events-none" />
+              
+              <div className="relative z-10">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="rounded-xl bg-gradient-to-br from-accent-cyan/30 to-accent-primary/30 p-3 border border-white/10 shadow-lg">
+                    <Users className="h-6 w-6 text-white drop-shadow-md" />
                   </div>
-                  {room.participant_usernames.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-text-muted">
-                      {room.participant_usernames.map((name) => (
-                        <span key={`${room.room_id}-viewer-${name}`} className="rounded-full bg-bg-secondary px-2 py-0.5">
-                          {name}
-                        </span>
-                      ))}
+                  <h2 className="text-2xl font-black text-white">配置放映室</h2>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-white/70 ml-1">主持人昵称</label>
+                    <input
+                      value={hostName}
+                      onChange={(e) => setHostName(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-base font-bold text-white outline-none focus:border-accent-cyan focus:bg-white/10 focus:shadow-[0_0_15px_rgba(0,242,254,0.15)] transition-all placeholder-white/30"
+                      placeholder="你的昵称"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-white/70 ml-1">房间名称</label>
+                    <input
+                      value={roomName}
+                      onChange={(e) => setRoomName(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-base font-bold text-white outline-none focus:border-accent-cyan focus:bg-white/10 focus:shadow-[0_0_15px_rgba(0,242,254,0.15)] transition-all placeholder-white/30"
+                      placeholder="例如：今晚一起看 Maid-san"
+                    />
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/40 p-6 shadow-inner">
+                    {selectedAsset ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          {selectedAssetBlocked ? (
+                            <AlertCircle className="h-6 w-6 text-danger" />
+                          ) : (
+                            <CheckCircle2 className="h-6 w-6 text-accent-cyan" />
+                          )}
+                          <p className="text-base font-black text-white">已锁定片源</p>
+                        </div>
+                        <p className="text-sm text-accent-cyan font-bold break-all leading-relaxed bg-accent-cyan/10 rounded-xl p-4 border border-accent-cyan/20">{selectedAsset.title}</p>
+                        <div className="flex flex-wrap gap-2 text-xs font-bold text-white/60">
+                          <span className="rounded-lg bg-white/10 border border-white/5 px-3 py-1.5">方案：{selectedAsset.recommended_mode === 'direct_play' ? '直放' : selectedAsset.recommended_mode === 'pretranscode_hls' ? '预转 HLS' : '不可播放'}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                        <Film className="h-10 w-10 text-white/20" />
+                        <p className="text-sm font-bold text-white/50">请从左侧列表选择你要放映的片源</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleCreateRoom(selectedAsset)}
+                    disabled={!selectedAsset || selectedAssetBlocked || creating}
+                    className="w-full group relative overflow-hidden rounded-[1.5rem] bg-gradient-to-r from-accent-cyan via-accent-primary to-accent-secondary p-[2px] transition-all hover:scale-[1.03] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100 shadow-[0_0_30px_rgba(0,242,254,0.2)] mt-8"
+                  >
+                    <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="relative flex items-center justify-center gap-2 rounded-[22px] bg-black/40 px-4 py-5 backdrop-blur-xl">
+                      <span className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-white/90">
+                        {creating ? '正在创建...' : selectedAssetBlocked ? '片源不可建房' : '🚀 立即创建放映室'}
+                      </span>
                     </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* Tab Content: Social */}
+      {activeTab === 'social' && (
+        <div className="animate-in fade-in slide-in-from-bottom-8 duration-500 max-w-5xl mx-auto">
+          <div className="rounded-[2.5rem] border border-white/10 bg-black/40 p-8 md:p-10 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="rounded-xl bg-gradient-to-br from-accent-primary/30 to-accent-secondary/30 p-3 border border-white/10 shadow-lg">
+                <MessageSquare className="h-7 w-7 text-white drop-shadow-md" />
+              </div>
+              <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70">社交与聊天</h2>
+            </div>
+            
+            {!user ? (
+               <div className="rounded-3xl border border-dashed border-white/10 p-16 text-center flex flex-col items-center justify-center gap-6 bg-white/[0.01]">
+                 <UserPlus className="h-16 w-16 text-white/10" />
+                 <span className="text-lg font-bold text-white/40">登录后即可加好友、畅聊</span>
+               </div>
+            ) : (
+               <div className="space-y-8">
+                  <div className="flex flex-col md:flex-row gap-4 bg-white/5 p-4 rounded-3xl border border-white/10 backdrop-blur-md">
+                    <input 
+                      value={friendUsername} 
+                      onChange={e => setFriendUsername(e.target.value)} 
+                      className="flex-1 rounded-2xl border border-white/10 bg-black/40 px-6 py-4 text-base font-bold text-white focus:bg-black/60 focus:border-accent-primary focus:shadow-[0_0_15px_rgba(99,102,241,0.15)] outline-none transition-all placeholder-white/30" 
+                      placeholder="输入用户名添加好友..." 
+                    />
+                    <button 
+                      onClick={() => void handleSendFriendRequest()} 
+                      disabled={friendBusy || !friendUsername.trim()} 
+                      className="rounded-2xl bg-gradient-to-br from-accent-primary to-accent-secondary px-8 py-4 text-base font-bold text-white shadow-lg hover:scale-105 hover:shadow-accent-primary/30 transition-all disabled:opacity-50 disabled:hover:scale-100 whitespace-nowrap"
+                    >
+                      发送申请
+                    </button>
+                  </div>
+
+                  {friends.length === 0 ? (
+                     <div className="rounded-3xl border border-dashed border-white/10 p-16 text-center text-base font-bold text-white/40 bg-white/[0.01] flex flex-col items-center gap-4">
+                       <Users className="h-12 w-12 text-white/10" />
+                       暂无好友，去大厅里偶遇一个吧
+                     </div>
+                  ) : (
+                     <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+                        <div className="space-y-4">
+                           <p className="text-sm font-black text-white/60 mb-2 tracking-widest pl-2">我的好友 ({friends.length})</p>
+                           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                             {friends.map(friend => (
+                               <button 
+                                 key={friend.user_id} 
+                                 onClick={() => setSelectedFriendId(friend.user_id)} 
+                                 className={cn(
+                                   'w-full text-left rounded-[1.5rem] p-4 border transition-all duration-300', 
+                                   selectedFriendId === friend.user_id 
+                                     ? 'border-accent-primary/50 bg-accent-primary/20 shadow-inner scale-[1.02]' 
+                                     : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/20'
+                                 )}
+                               >
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-base text-white truncate drop-shadow-sm">{friend.username}</span>
+                                    {friend.is_online && <span className="h-3 w-3 rounded-full bg-success border-2 border-black shadow-[0_0_10px_#22c55e]"></span>}
+                                  </div>
+                                  {friend.last_message_preview ? (
+                                    <p className="text-xs font-medium text-white/50 truncate">{friend.last_message_preview}</p>
+                                  ) : (
+                                    <p className="text-xs font-medium text-white/30 italic">没有聊天记录</p>
+                                  )}
+                               </button>
+                             ))}
+                           </div>
+                        </div>
+
+                        {selectedFriend ? (
+                           <div className="flex flex-col rounded-[2rem] border border-white/10 bg-black/40 overflow-hidden shadow-inner h-[600px]">
+                              {/* Chat Header */}
+                              <div className="flex justify-between items-center bg-white/5 p-6 border-b border-white/10 backdrop-blur-md">
+                                 <div className="flex items-center gap-4">
+                                   <div className="h-12 w-12 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center font-black text-xl text-white border border-white/20 shadow-inner">
+                                     {selectedFriend.username.charAt(0).toUpperCase()}
+                                   </div>
+                                   <div>
+                                     <span className="font-black text-lg text-white tracking-wide block">{selectedFriend.username}</span>
+                                     <span className="text-xs font-bold text-success">在线状态已隐藏</span>
+                                   </div>
+                                 </div>
+                                 <button onClick={() => void handleRemoveFriend()} className="rounded-xl px-4 py-2 bg-danger/10 text-xs font-bold text-danger hover:bg-danger hover:text-white transition-colors border border-danger/20">删除好友</button>
+                              </div>
+                              {/* Chat Body */}
+                              <div ref={chatListRef} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-gradient-to-b from-transparent to-white/[0.02]">
+                                {chatMessages.length === 0 && !chatLoading && (
+                                   <div className="h-full flex flex-col items-center justify-center text-sm font-bold text-white/30 gap-3">
+                                     <MessageSquare className="h-10 w-10 opacity-20" />
+                                     打个招呼吧~
+                                   </div>
+                                )}
+                                {chatMessages.map(msg => (
+                                   <div key={msg.message_id} className={cn('flex', msg.is_mine ? 'justify-end' : 'justify-start')}>
+                                     <div className={cn(
+                                       'max-w-[75%] px-6 py-4 text-base shadow-lg', 
+                                       msg.is_mine 
+                                         ? 'bg-gradient-to-br from-accent-primary to-accent-secondary text-white rounded-3xl rounded-tr-sm' 
+                                         : 'bg-white/10 text-white rounded-3xl rounded-tl-sm backdrop-blur-md border border-white/5'
+                                     )}>
+                                        <p className="break-words font-medium leading-relaxed">{msg.body}</p>
+                                     </div>
+                                   </div>
+                                ))}
+                              </div>
+                              {/* Chat Input */}
+                              <div className="p-5 bg-white/5 border-t border-white/10 backdrop-blur-md">
+                                 <div className="flex gap-4">
+                                   <input 
+                                     value={chatDraft} 
+                                     onChange={e => setChatDraft(e.target.value)} 
+                                     onKeyDown={(e) => { if(e.key === 'Enter') handleSendChatMessage()}} 
+                                     className="flex-1 rounded-2xl bg-black/60 border border-white/10 px-6 py-4 text-base font-bold text-white outline-none focus:border-accent-primary focus:bg-black/80 transition-all placeholder-white/30" 
+                                     placeholder={`发送给 ${selectedFriend.username}...`} 
+                                   />
+                                   <button 
+                                     onClick={() => void handleSendChatMessage()} 
+                                     disabled={!chatDraft.trim() || sendingMessage} 
+                                     className="rounded-2xl bg-gradient-to-br from-accent-primary to-accent-secondary px-6 text-white shadow-lg shadow-accent-primary/20 hover:scale-105 hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] transition-all disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center"
+                                   >
+                                     {sendingMessage ? <Loader2 className="h-6 w-6 animate-spin" /> : <Send className="h-6 w-6" />}
+                                   </button>
+                                 </div>
+                              </div>
+                           </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-white/10 bg-white/[0.01] h-[600px] space-y-6">
+                            <MessageSquare className="h-16 w-16 text-white/10" />
+                            <p className="text-base font-bold text-white/40">在左侧选择好友开始聊天</p>
+                          </div>
+                        )}
+                     </div>
                   )}
-                </Link>
-              ))
+               </div>
             )}
           </div>
-        </section>
-      </div>
+        </div>
+      )}
     </div>
   )
 }
