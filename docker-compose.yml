@@ -1,0 +1,55 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ANIME_ENV: development
+      ANIME_DOWNLOAD_DIR: /data/downloads
+      ANIME_COVER_CACHE_DIR: /data/covers
+      ANIME_STREAM_CACHE_DIR: /data/streams
+      ANIME_HLS_OUTPUT_DIR: /data/streams/hls
+      ANIME_QB_HOST: qbittorrent
+      ANIME_QB_PORT: 8080
+      ANIME_QB_USERNAME: admin
+      ANIME_QB_PASSWORD: ${ANIME_QB_PASSWORD:-adminadmin}
+    volumes:
+      - anime-data:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      qbittorrent:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Optional: bundled qBittorrent for a zero-config start.
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    profiles: ["with-bt"]
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - WEBUI_PORT=8080
+    volumes:
+      - qb-config:/config
+      - anime-data:/downloads
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    restart: unless-stopped
+
+volumes:
+  anime-data:
+  qb-config:
