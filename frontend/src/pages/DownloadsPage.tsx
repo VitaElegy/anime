@@ -43,7 +43,8 @@ export default function DownloadsPage() {
   }
 
   useEffect(() => {
-    refresh()
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => { void refresh() })
     intervalRef.current = setInterval(refresh, 3000)
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)

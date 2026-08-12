@@ -22,7 +22,10 @@ export default function CalendarPage() {
     } catch { /* silent */ } finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => { void load() })
+  }, [])
 
   const today = new Date().getDay()
   const todayIdx = today === 0 ? 6 : today - 1

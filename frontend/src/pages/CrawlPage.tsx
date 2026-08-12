@@ -63,6 +63,7 @@ export default function CrawlPage() {
   const logEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<Map<CrawlSource, AbortController>>(new Map())
   const breakpointRef = useRef<Map<string, number>>(new Map())
+  const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -147,6 +148,7 @@ export default function CrawlPage() {
 
         totalResults += pageResults
         breakpointRef.current.set(bpKey, page)
+        setBreakpoints((prev) => new Set(prev).add(bpKey))
 
         if (source === 'nyaa' && pageResults === 0 && page > 1) {
           addLog({ timestamp: now(), level: 'warn', source, message: `第 ${page} 页无结果，提前终止` })
@@ -162,6 +164,7 @@ export default function CrawlPage() {
       if (!controller.signal.aborted) {
         addLog({ timestamp: now(), level: 'success', source, message: `全部完成！累计获取 ${totalResults} 条数据` })
         breakpointRef.current.delete(bpKey)
+        setBreakpoints((prev) => { const next = new Set(prev); next.delete(bpKey); return next })
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
@@ -185,7 +188,7 @@ export default function CrawlPage() {
     }
   }
 
-  const clearLogs = () => { setLogs([]); breakpointRef.current.clear() }
+  const clearLogs = () => { setLogs([]); breakpointRef.current.clear(); setBreakpoints(new Set()) }
 
   const loadHistory = async () => {
     try { const data = await getCrawlHistory(30); setHistory(data); setShowHistory(true) } catch { /* */ }
@@ -193,7 +196,7 @@ export default function CrawlPage() {
 
   const hasBreakpoint = (source: CrawlSource) => {
     const bpKey = `${source}:${keyword}`
-    return breakpointRef.current.has(bpKey)
+    return breakpoints.has(bpKey)
   }
 
   return (

@@ -7,9 +7,9 @@ media so the watch-room synchronized playback path can still be exercised.
 import json
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.error
 
 BASE = "http://localhost:8000"
 
@@ -158,7 +158,7 @@ def main() -> int:
     # ------------------------------------------------------------------
     section("10) Done — room left intact for UI inspection")
     print(f"Open http://localhost:3000/watch/{room_id}  (or wherever the frontend lives)")
-    print(f"Or browse the lobby at http://localhost:3000/watch")
+    print("Or browse the lobby at http://localhost:3000/watch")
     return 0
 
 
