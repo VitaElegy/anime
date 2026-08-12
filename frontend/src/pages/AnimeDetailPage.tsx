@@ -1,11 +1,12 @@
 import { useEffect, useState, type SyntheticEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, Heart, Loader2, Play, Search, Sparkles, Star, Tv2, Users } from 'lucide-react'
-import { addFavorite, anilistSearch, getCoverUrl, getFavorites, getMetadata, getMetadataFull, getStreamingLinks, normalizeExternalImageUrl, proxyImageUrl, removeFavorite, searchMetadata } from '@/api'
+import { ArrowLeft, Clapperboard, ExternalLink, Heart, Loader2, Play, Search, Sparkles, Star, Tv2, Users } from 'lucide-react'
+import { addFavorite, anilistSearch, getCoverUrl, getFavorites, getMetadata, getMetadataFull, getStreamingLinks, normalizeExternalImageUrl, proxyImageUrl, removeFavorite, searchMetadata, watchChannels, watchDetail, watchExternal, watchSearch, watchStreams } from '@/api'
 import type { AniListAnime } from '@/api'
 import { useAuth } from '@/contexts/useAuth'
 import { cn } from '@/lib/utils'
-import type { AnimeMetadata, AnimeMetadataFull, StreamingLink } from '@/types'
+import type { AnimeMetadata, AnimeMetadataFull, ChannelDetail as ChannelDetailModel, ChannelEpisode, ChannelInfo, ChannelSearchResult, ChannelStream, StreamingLink } from '@/types'
+import ChannelPlayer from '@/components/ChannelPlayer'
 
 const COVER_PLACEHOLDER =
   'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400"><rect fill="%23161b2b" width="300" height="400"/><text x="150" y="200" text-anchor="middle" fill="%2364748b" font-size="16">No Cover</text></svg>'
@@ -84,6 +85,16 @@ export default function AnimeDetailPage() {
   const [message, setMessage] = useState('')
   const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
   const [coverIndex, setCoverIndex] = useState(0)
+  const [channelInfos, setChannelInfos] = useState<ChannelInfo[]>([])
+  const [channelHits, setChannelHits] = useState<ChannelSearchResult[]>([])
+  const [expandedChannel, setExpandedChannel] = useState('')
+  const [channelDetail, setChannelDetail] = useState<ChannelDetailModel | null>(null)
+  const [channelBusy, setChannelBusy] = useState(false)
+  const [playerOpen, setPlayerOpen] = useState(false)
+  const [playerTitle, setPlayerTitle] = useState('')
+  const [playerStreams, setPlayerStreams] = useState<ChannelStream[]>([])
+  const [playerBusy, setPlayerBusy] = useState(false)
+  const [currentEpisodeRef, setCurrentEpisodeRef] = useState('')
 
   const subjectId = Number(subjectIdParam || '0') || 0
   const titleParam = searchParams.get('title') || ''
@@ -107,6 +118,33 @@ export default function AnimeDetailPage() {
 
     void loadFavorites()
   }, [isAuthenticated])
+
+  useEffect(() => {
+    const loadChannels = async () => {
+      let infos: ChannelInfo[] = []
+      try {
+        infos = await watchChannels()
+      } catch {
+        infos = []
+      }
+      const candidates = [rawTitleParam, titleParam, metadata?.name_cn, metadata?.name].filter((v): v is string => Boolean(v))
+      const query = candidates[0] || ''
+      let hits: ChannelSearchResult[] = []
+      if (query) {
+        try {
+          hits = await watchSearch(query)
+        } catch {
+          hits = []
+        }
+      }
+      // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+      void Promise.resolve().then(() => {
+        setChannelInfos(infos)
+        setChannelHits(hits)
+      })
+    }
+    void loadChannels()
+  }, [titleParam, rawTitleParam, metadata?.name_cn, metadata?.name])
 
   useEffect(() => {
     const load = async () => {
@@ -268,6 +306,65 @@ export default function AnimeDetailPage() {
       setMessage(extractErrorMessage(error))
     } finally {
       setFavoriteBusy(false)
+    }
+  }
+
+  const handleExpandChannel = async (hit: ChannelSearchResult) => {
+    setExpandedChannel(hit.channel)
+    setChannelDetail(null)
+    const info = channelInfos.find(c => c.id === hit.channel)
+    if (info?.external) {
+      try {
+        const { url } = await watchExternal(hit.channel, hit.detail_ref)
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } catch {
+        setMessage('该渠道暂不可用')
+        setMessageTone('error')
+      }
+      return
+    }
+    setChannelBusy(true)
+    try {
+      const detail = await watchDetail(hit.channel, hit.detail_ref)
+      setChannelDetail(detail)
+    } catch {
+      setChannelDetail(null)
+      setMessage('渠道暂时不可用，请稍后再试')
+      setMessageTone('error')
+    } finally {
+      setChannelBusy(false)
+    }
+  }
+
+  const handlePlayEpisode = async (ep: ChannelEpisode) => {
+    if (!expandedChannel) return
+    setPlayerBusy(true)
+    setCurrentEpisodeRef(ep.episode_ref)
+    const resolvedTitle = `${channelDetail?.title || displayTitle} · ${ep.title}`
+    try {
+      const streams = await watchStreams(expandedChannel, ep.episode_ref)
+      setPlayerStreams(streams)
+      setPlayerTitle(resolvedTitle)
+      setPlayerOpen(true)
+    } catch {
+      setPlayerStreams([])
+      setPlayerTitle(resolvedTitle)
+      setPlayerOpen(true)
+    } finally {
+      setPlayerBusy(false)
+    }
+  }
+
+  const handleRetryPlayer = async () => {
+    if (!expandedChannel || !currentEpisodeRef) return
+    setPlayerBusy(true)
+    try {
+      const streams = await watchStreams(expandedChannel, currentEpisodeRef)
+      setPlayerStreams(streams)
+    } catch {
+      setPlayerStreams([])
+    } finally {
+      setPlayerBusy(false)
     }
   }
 
@@ -510,6 +607,92 @@ export default function AnimeDetailPage() {
             </div>
             
             <div className="space-y-6">
+              <section className="space-y-4">
+                <div className="flex items-center gap-2 text-lg font-bold text-white">
+                  <div className="h-5 w-1.5 rounded-full bg-gradient-to-b from-accent-primary to-accent-secondary"></div>
+                  <h3 className="flex items-center gap-2"><Clapperboard className="h-5 w-5" /> 在线播放渠道</h3>
+                </div>
+
+                {channelInfos.length === 0 ? (
+                  <p className="rounded-2xl border border-white/5 bg-white/[0.02] p-4 text-sm text-white/50">正在检测可用的在线渠道…</p>
+                ) : channelHits.length === 0 ? (
+                  <p className="rounded-2xl border border-white/5 bg-white/[0.02] p-4 text-sm text-white/50">
+                    暂无匹配的在线渠道，可尝试「搜索下载资源」或稍后再试。
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {channelHits.map(hit => {
+                      const info = channelInfos.find(c => c.id === hit.channel)
+                      const isExpanded = expandedChannel === hit.channel
+                      const isExternal = Boolean(info?.external)
+                      return (
+                        <div key={`${hit.channel}-${hit.detail_ref}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-sm transition-all">
+                          <button
+                            onClick={() => void handleExpandChannel(hit)}
+                            className="flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-white/5"
+                          >
+                            {hit.cover_url ? (
+                              <img
+                                src={proxyImageUrl(hit.cover_url)}
+                                alt=""
+                                className="h-14 w-10 shrink-0 rounded-lg object-cover shadow-md"
+                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                              />
+                            ) : null}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="rounded-md bg-gradient-to-r from-accent-primary to-accent-secondary px-2 py-0.5 text-[10px] font-black text-white">
+                                  {info?.name || hit.channel}
+                                </span>
+                                {info && !info.healthy && (
+                                  <span className="rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] font-bold text-warning">暂不可用</span>
+                                )}
+                              </div>
+                              <p className="mt-1 truncate text-sm font-bold text-white">{hit.title}</p>
+                            </div>
+                            <span className="shrink-0 text-xs font-bold text-accent-secondary">
+                              {isExpanded ? '收起' : isExternal ? '前往观看' : '选集'}
+                            </span>
+                          </button>
+
+                          {isExpanded && !isExternal && (
+                            <div className="border-t border-white/5 p-3">
+                              {channelBusy && channelDetail === null ? (
+                                <div className="flex items-center justify-center gap-2 py-4 text-sm text-white/50">
+                                  <Loader2 className="h-4 w-4 animate-spin" /> 加载集数…
+                                </div>
+                              ) : channelDetail && channelDetail.groups.length > 0 ? (
+                                <div className="space-y-3">
+                                  {channelDetail.groups.map(group => (
+                                    <div key={group.title} className="space-y-2">
+                                      <p className="text-xs font-bold text-white/60">{group.title}</p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {group.episodes.map(ep => (
+                                          <button
+                                            key={ep.episode_ref}
+                                            onClick={() => void handlePlayEpisode(ep)}
+                                            disabled={playerBusy}
+                                            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-white/80 transition-colors hover:border-accent-secondary/50 hover:bg-accent-secondary/20 hover:text-white disabled:opacity-50"
+                                          >
+                                            {ep.title}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="py-2 text-sm text-white/50">该渠道暂未提供可播放集数。</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+
               {streamingLinks.length > 0 && (
                 <section className="space-y-4">
                   <div className="flex items-center gap-2 text-lg font-bold text-white">
@@ -643,6 +826,15 @@ export default function AnimeDetailPage() {
               )}
             </div>
           </div>
+        )}
+
+        {playerOpen && (
+          <ChannelPlayer
+            title={playerTitle}
+            streams={playerStreams}
+            onClose={() => { setPlayerOpen(false); setPlayerStreams([]) }}
+            onRetry={() => void handleRetryPlayer()}
+          />
         )}
       </div>
     </div>
