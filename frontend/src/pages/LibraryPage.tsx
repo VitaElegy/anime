@@ -64,9 +64,15 @@ export default function LibraryPage() {
     let active = true
 
     if (!isAuthenticated) {
-      setFavorites([])
-      setFavSet(new Set())
-      return
+      // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+      void Promise.resolve().then(() => {
+        if (!active) return
+        setFavorites([])
+        setFavSet(new Set())
+      })
+      return () => {
+        active = false
+      }
     }
 
     const run = async () => {

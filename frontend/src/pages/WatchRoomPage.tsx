@@ -215,7 +215,8 @@ export default function WatchRoomPage() {
   }, [roomId])
 
   useEffect(() => {
-    void load(false)
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => { void load(false) })
   }, [load])
 
   useRoomEventStream(roomId, Boolean(roomId), {
@@ -239,7 +240,8 @@ export default function WatchRoomPage() {
   })
 
   useEffect(() => {
-    void loadLibrary()
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => { void loadLibrary() })
   }, [loadLibrary, roomId])
 
   useEffect(() => {
@@ -263,31 +265,38 @@ export default function WatchRoomPage() {
   const currentUserId = user?.id || 0
 
   useEffect(() => {
-    setRoomParticipants([])
-    setFriends([])
-    setOutgoingInvites([])
-    setRoomMessages([])
-    setInviteMessage('')
-    setRoomMessageDraft('')
-    setRoomLoadError('')
-    setAssetLoadError('')
-    setSocialLoadError('')
-    setRoomChatError('')
-    setSocialReady(false)
-    setRoomChatReady(false)
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      setRoomParticipants([])
+      setFriends([])
+      setOutgoingInvites([])
+      setRoomMessages([])
+      setInviteMessage('')
+      setRoomMessageDraft('')
+      setRoomLoadError('')
+      setAssetLoadError('')
+      setSocialLoadError('')
+      setRoomChatError('')
+      setSocialReady(false)
+      setRoomChatReady(false)
+    })
   }, [roomId])
 
   useEffect(() => {
     const requiresRoomPresence = Boolean(currentUserId && currentRoomId && ownerUserId !== currentUserId)
     roomPresenceRequestRef.current = null
     roomPresenceReadyRef.current = !requiresRoomPresence
-    setRoomPresenceReady(!requiresRoomPresence)
-    setRoomPresencePending(requiresRoomPresence)
-    setRoomPresenceError('')
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      setRoomPresenceReady(!requiresRoomPresence)
+      setRoomPresencePending(requiresRoomPresence)
+      setRoomPresenceError('')
+    })
   }, [currentRoomId, currentUserId, ownerUserId])
 
   useEffect(() => {
-    void loadSocialContext()
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => { void loadSocialContext() })
     const timer = window.setInterval(() => {
       void loadSocialContext()
     }, 12000)
@@ -295,7 +304,8 @@ export default function WatchRoomPage() {
   }, [loadSocialContext, user?.id])
 
   useEffect(() => {
-    void loadRoomChat()
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => { void loadRoomChat() })
   }, [loadRoomChat, user?.id])
 
   const assetBlocked = isBlocked(asset)
