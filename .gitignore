@@ -1,27 +1,53 @@
-# Python
+# ─── Python ─────────────────────────────────────────────────────────────
 __pycache__/
-*.pyc
-*.pyo
-.env
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .venv/
-*.db
+venv/
+env/
+*.egg-info/
+build/
+dist/
 
-# Node
+# ─── Node / Frontend ────────────────────────────────────────────────────
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
+npm-debug.log*
 
-# IDE
+# ─── Environment & secrets ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Runtime data (SQLite, downloads, covers, HLS) ─────────────────────
+data/
+covers/
+*.db
+*.db-journal
+*.sqlite3
+
+# ─── IDE / OS ───────────────────────────────────────────────────────────
 .vscode/
 .idea/
-
-# Covers cache
-covers/
-!covers/.gitkeep
-data/
-
-# OS
-Thumbs.db
+*.swp
 .DS_Store
+Thumbs.db
 
-# CodeBuddy
-.codebuddy/
+# ─── Local tooling / debugging artifacts ────────────────────────────────
+.run/
+.playwright-cli/
+*.log
+*.png
+*.yaml
+tab*.txt
+media/
+
+# ─── Third-party reference checkouts (never commit) ─────────────────────
+reference-projects/
+
+# ─── Misc ───────────────────────────────────────────────────────────────
+startup.*
