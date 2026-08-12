@@ -25,6 +25,10 @@ import type {
   DirectMessage,
   RoomInvitation,
   RoomMessage,
+  ChannelInfo,
+  ChannelSearchResult,
+  ChannelDetail,
+  ChannelStream,
 } from '@/types'
 
 const AUTH_TOKEN_KEY = 'anime_auth_token'
@@ -506,4 +510,43 @@ export async function getWatchResume(roomId: string, mediaId = ''): Promise<Watc
 export async function syncWatchProgress(req: SyncWatchHistoryRequest): Promise<WatchHistoryItem> {
   const { data } = await api.post('/watch/history/progress', req)
   return data
+}
+
+// ---------------------------------------------------------------------------
+// Online watch channels (see docs/CHANNEL_ARCHITECTURE.md)
+// ---------------------------------------------------------------------------
+
+export async function watchChannels(): Promise<ChannelInfo[]> {
+  const { data } = await api.get('/watch/channels')
+  return data || []
+}
+
+export async function watchSearch(q: string, page = 1): Promise<ChannelSearchResult[]> {
+  const { data } = await api.get('/watch/search', { params: { q, page } })
+  return data || []
+}
+
+export async function watchDetail(channel: string, ref: string): Promise<ChannelDetail> {
+  const { data } = await api.get(`/watch/${encodeURIComponent(channel)}/detail`, { params: { ref } })
+  return data
+}
+
+export async function watchStreams(channel: string, ref: string): Promise<ChannelStream[]> {
+  const { data } = await api.get(`/watch/${encodeURIComponent(channel)}/streams`, { params: { ref } })
+  return data || []
+}
+
+export async function watchExternal(channel: string, ref: string): Promise<{ url: string }> {
+  const { data } = await api.get(`/watch/${encodeURIComponent(channel)}/external`, { params: { ref } })
+  return data
+}
+
+/** Build the backend stream-proxy URL for a resolved stream. */
+export function watchProxyUrl(stream: ChannelStream): string {
+  const params = new URLSearchParams({ url: stream.url })
+  const referer = stream.headers?.Referer
+  const ua = stream.headers?.['User-Agent']
+  if (referer) params.set('referer', referer)
+  if (ua) params.set('ua', ua)
+  return `/api/watch/proxy/stream?${params.toString()}`
 }

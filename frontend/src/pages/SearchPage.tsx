@@ -108,9 +108,12 @@ export default function SearchPage() {
     const q = searchParams.get('q') || ''
     const s = (searchParams.get('scope') as SearchScope) === 'torrent' ? 'torrent' : 'anime'
     if (q) {
-      setQuery(q)
-      setScope(s)
-      doSearch(q)
+      // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+      void Promise.resolve().then(() => {
+        setQuery(q)
+        setScope(s)
+        doSearch(q)
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])

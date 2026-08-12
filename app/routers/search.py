@@ -16,13 +16,23 @@ Ranking:
 
 import asyncio
 import logging
-import re
 
 from fastapi import APIRouter, Query
 
 from app.models import SearchResult, TorrentItem
 from app.services import anime_garden, bangumi, mikan, nyaa, subsplease
-from app.services import database as db
+from app.services.keyword_expand import (
+    expand_keywords as _translate_keyword,
+)
+from app.services.keyword_expand import (
+    has_chinese as _has_chinese,
+)
+from app.services.keyword_expand import (
+    has_japanese as _has_japanese,
+)
+from app.services.keyword_expand import (
+    normalize_title_key as _normalize_title_key,
+)
 
 router = APIRouter()
 
@@ -51,59 +61,6 @@ _CHINESE_FANSUB_HINTS = {
     "Kirara",
     "沸羊羊",
 }
-
-
-def _has_chinese(text: str) -> bool:
-    return bool(re.search(r"[\u4e00-\u9fff]", text))
-
-
-def _has_japanese(text: str) -> bool:
-    return bool(re.search(r"[\u3040-\u309f\u30a0-\u30ff]", text))
-
-
-async def _translate_keyword(keyword: str) -> list[str]:
-    """Translate Chinese/Japanese keyword to search-friendly terms."""
-    alternatives: set[str] = set()
-    alternatives.add(keyword)
-
-    # Strategy 1: Local DB reverse lookup (instant, best quality)
-    try:
-        with db.get_conn() as conn:
-            rows = conn.execute(
-                "SELECT cleaned_title, name, name_cn FROM title_cover_map WHERE name_cn LIKE ? OR name LIKE ? LIMIT 10",
-                (f"%{keyword}%", f"%{keyword}%"),
-            ).fetchall()
-            for row in rows:
-                if row["cleaned_title"]:
-                    alternatives.add(row["cleaned_title"])
-                if row["name"]:
-                    alternatives.add(row["name"])
-    except Exception:
-        pass
-
-    # Strategy 2: Bangumi search
-    try:
-        results = await bangumi.search(keyword, limit=3)
-        for r in results:
-            if r.name:
-                alternatives.add(r.name)
-                eng_words = re.findall(r"[A-Za-z]{3,}", r.name)
-                for w in eng_words:
-                    alternatives.add(w)
-            if r.name_cn and r.name_cn != keyword:
-                alternatives.add(r.name_cn)
-    except Exception:
-        pass
-
-    return list(alternatives)
-
-
-def _normalize_title_key(title: str) -> str:
-    """Normalize a torrent title for title-based deduping when info_hash is missing."""
-    # Strip bracketed tags like [GROUP], [1080p], etc and whitespace
-    t = re.sub(r"[\[\(（][^\]\)）]*[\]\)）]", "", title)
-    t = re.sub(r"[^\w\u4e00-\u9fff]+", "", t).lower()
-    return t[:80]
 
 
 def _score_fansub(name: str) -> int:

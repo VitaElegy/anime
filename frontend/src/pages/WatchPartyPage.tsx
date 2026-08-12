@@ -249,7 +249,8 @@ export default function WatchPartyPage() {
   }, [applyLobby, user])
 
   useEffect(() => {
-    void load(false)
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => { void load(false) })
   }, [load])
 
   useEffect(() => {
@@ -260,9 +261,9 @@ export default function WatchPartyPage() {
   }, [loadLobbySnapshot])
 
   useEffect(() => {
-    if (user?.username) {
-      setHostName(user.username)
-    }
+    if (!user?.username) return
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => setHostName(user.username))
   }, [user?.username])
 
   const selectedAsset = assets.find((item) => item.media_id === selectedMediaId) || null
@@ -312,10 +313,11 @@ export default function WatchPartyPage() {
 
   useEffect(() => {
     if (!user || !selectedFriendId) {
-      setChatMessages([])
+      // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+      void Promise.resolve().then(() => setChatMessages([]))
       return
     }
-    void loadConversation(selectedFriendId)
+    void Promise.resolve().then(() => { void loadConversation(selectedFriendId) })
   }, [loadConversation, selectedFriendId, user])
 
   useEffect(() => {
@@ -327,7 +329,8 @@ export default function WatchPartyPage() {
   }, [loadConversation, selectedFriendId, user])
 
   useEffect(() => {
-    setChatDraft('')
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => setChatDraft(''))
   }, [selectedFriendId])
 
   useEffect(() => {

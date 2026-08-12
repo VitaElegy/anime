@@ -462,3 +462,73 @@ class WatchLobbyOverview(BaseModel):
     incoming_room_invitations: list[RoomInvitation] = Field(default_factory=list)
     outgoing_room_invitations: list[RoomInvitation] = Field(default_factory=list)
     generated_at: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Online watch channels — see docs/CHANNEL_ARCHITECTURE.md
+# ---------------------------------------------------------------------------
+
+
+class ChannelInfo(BaseModel):
+    """A registered online watch channel and its health state."""
+
+    id: str
+    name: str
+    enabled: bool = True
+    healthy: bool = True
+    supports_search: bool = True
+    supports_detail: bool = True
+    supports_streams: bool = True
+    language: str = "zh"
+    description: str = ""
+    external: bool = False  # True = official external link only (e.g. Bilibili)
+
+
+class ChannelSearchResult(BaseModel):
+    """A single anime hit from one channel's search."""
+
+    channel: str
+    title: str
+    title_original: str = ""
+    cover_url: str = ""
+    description: str = ""
+    year: str = ""
+    detail_ref: str  # opaque reference passed to get_detail
+    extra: dict = Field(default_factory=dict)
+
+
+class ChannelEpisode(BaseModel):
+    """A single episode reference from a channel detail page."""
+
+    title: str
+    episode_ref: str  # opaque reference passed to get_streams
+    extra: dict = Field(default_factory=dict)
+
+
+class ChannelEpisodeGroup(BaseModel):
+    """A named playlist/route group (e.g. 第一线路) with its episodes."""
+
+    title: str
+    episodes: list[ChannelEpisode] = Field(default_factory=list)
+
+
+class ChannelDetail(BaseModel):
+    """A channel's anime detail: title/cover/desc + episode groups."""
+
+    channel: str
+    title: str = ""
+    cover_url: str = ""
+    description: str = ""
+    groups: list[ChannelEpisodeGroup] = Field(default_factory=list)
+
+
+class ChannelStream(BaseModel):
+    """A playable stream resolved for an episode (may be short-lived)."""
+
+    type: str = "hls"  # "hls" | "mp4" | "web"
+    url: str
+    quality: str = ""
+    format: str = ""
+    headers: dict[str, str] = Field(default_factory=dict)
+    expires_in: int = 0  # seconds; 0 = unknown
+    note: str = ""
