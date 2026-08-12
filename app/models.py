@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from pydantic import BaseModel, Field
 
 
@@ -13,7 +11,12 @@ class TorrentItem(BaseModel):
     seeders: int = 0
     leechers: int = 0
     date: str = ""
-    source: str = ""  # "nyaa" or "subsplease"
+    source: str = ""  # "nyaa" | "subsplease" | "mikan" | "anime_garden"
+    # Optional enrichment for cross-source dedupe + UI badges
+    info_hash: str = ""  # lowercase BT info-hash (40 hex chars) when available
+    fansub: str = ""  # Subtitle group name (Chinese scene) e.g. "喵萌奶茶屋"
+    publisher: str = ""  # Uploader/publisher display name
+    detail_url: str = ""  # Original posting page on the source site
 
 
 class SearchResult(BaseModel):
@@ -22,6 +25,60 @@ class SearchResult(BaseModel):
     items: list[TorrentItem] = Field(default_factory=list)
     total: int = 0
     source: str = ""
+
+
+class StaffMember(BaseModel):
+    """A single crew/staff entry from Bangumi infobox."""
+
+    role: str = ""  # e.g. "导演" "原作" "系列构成"
+    name: str = ""
+
+
+class ThemeSong(BaseModel):
+    """Opening / ending / insert song entry."""
+
+    kind: str = ""  # "OP" | "ED" | "OP2" | ...
+    title: str = ""
+    artist: str = ""
+    episodes: str = ""  # free-form, e.g. "1-16"
+
+
+class StreamingLink(BaseModel):
+    """A legal streaming entry (Bilibili, iQiyi, Youku, Baha, etc)."""
+
+    platform: str  # "bilibili" | "iqiyi" | "youku" | "bahamut"
+    title: str = ""
+    url: str = ""
+    season_id: str = ""
+    cover_url: str = ""
+    score: float = 0.0
+    total_episodes: int = 0
+    is_finished: bool = False
+    is_paid: bool = False
+    paid_note: str = ""  # e.g. "大会员观看"
+
+
+class AnimeMetadataFull(BaseModel):
+    """Rich metadata aggregated from Bangumi v0 infobox and external sources."""
+
+    id: int
+    name_cn: str = ""
+    name: str = ""
+    summary: str = ""
+    score: float = 0.0
+    score_count: int = 0
+    rank: int = 0
+    cover_url: str = ""
+    air_date: str = ""  # ISO date, e.g. "2023-09-29"
+    air_weekday: str = ""
+    total_episodes: int = 0
+    tags: list[str] = Field(default_factory=list)
+    meta_tags: list[str] = Field(default_factory=list)
+    staff: list[StaffMember] = Field(default_factory=list)
+    theme_songs: list[ThemeSong] = Field(default_factory=list)
+    streaming_links: list[StreamingLink] = Field(default_factory=list)
+    official_site: str = ""
+    aliases: list[str] = Field(default_factory=list)
 
 
 class CalendarDayEntry(BaseModel):

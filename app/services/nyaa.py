@@ -136,8 +136,6 @@ async def _search_html_uncached(
         # Column indices: 0=category, 1=name, 2=links, 3=size, 4=date, 5=seeders, 6=leechers, 7=downloads
         title_link = cols[1].select_one("a:last-of-type")
         title = title_link.get_text(strip=True) if title_link else ""
-        detail_href = title_link["href"] if title_link and title_link.has_attr("href") else ""
-
         # Magnet and torrent links
         magnet = ""
         torrent_url = ""

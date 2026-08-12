@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -9,9 +9,25 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import anilist as anilist_router, auth, calendar as calendar_router, cover_resolve, crawl, download, favorites, image_proxy, media, metadata, schedule, search, social, watch_history, watch_rooms
-from app.services import database as db
+from app.routers import anilist as anilist_router
+from app.routers import (
+    auth,
+    cover_resolve,
+    crawl,
+    download,
+    favorites,
+    image_proxy,
+    media,
+    metadata,
+    schedule,
+    search,
+    social,
+    watch_history,
+    watch_rooms,
+)
+from app.routers import calendar as calendar_router
 from app.services import cache_warmer, watch_room
+from app.services import database as db
 from app.services.qbittorrent import qb_service
 
 logger = logging.getLogger("anime-downloader")
@@ -24,6 +40,10 @@ settings.HLS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
+    # Fail fast when the operator tries to ship the factory default
+    # qBittorrent password into production.
+    settings.assert_runtime_safety()
+
     warm_task: asyncio.Task | None = None
     room_cleanup_task: asyncio.Task | None = None
 
@@ -56,16 +76,12 @@ async def lifespan(app: FastAPI):
     # Shutdown
     if warm_task is not None:
         warm_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await warm_task
-        except asyncio.CancelledError:
-            pass
     if room_cleanup_task is not None:
         room_cleanup_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await room_cleanup_task
-        except asyncio.CancelledError:
-            pass
     logger.info("Shutting down")
 
 

@@ -78,8 +78,13 @@ async def _get_schedule_uncached(tz: str = "Asia/Shanghai") -> dict:
     schedule: dict[str, list[dict]] = {}
 
     day_map = {
-        "Monday": "周一", "Tuesday": "周二", "Wednesday": "周三",
-        "Thursday": "周四", "Friday": "周五", "Saturday": "周六", "Sunday": "周日",
+        "Monday": "周一",
+        "Tuesday": "周二",
+        "Wednesday": "周三",
+        "Thursday": "周四",
+        "Friday": "周五",
+        "Saturday": "周六",
+        "Sunday": "周日",
     }
 
     for day_name, items in raw_schedule.items():

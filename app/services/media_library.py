@@ -48,6 +48,9 @@ def _clean_probe_error(message: str) -> str:
 
 def _probe_media(path: Path) -> tuple[dict, str, str]:
     try:
+        # Explicitly force binary I/O + UTF-8 decoding. Windows' default mbcs
+        # codec mangles ffprobe's JSON whenever the file path or metadata
+        # contains non-ASCII characters (Chinese fansub releases, etc.).
         result = subprocess.run(
             [
                 settings.FFPROBE_BIN,
@@ -60,15 +63,20 @@ def _probe_media(path: Path) -> tuple[dict, str, str]:
                 str(path),
             ],
             capture_output=True,
-            text=True,
             check=True,
         )
-        return json.loads(result.stdout or "{}"), "ready", ""
+        stdout_txt = (result.stdout or b"").decode("utf-8", errors="replace")
+        return json.loads(stdout_txt or "{}"), "ready", ""
     except FileNotFoundError:
         logger.warning("ffprobe not found, falling back to extension-based media inspection")
         return {}, "unavailable", "ffprobe not found"
     except subprocess.CalledProcessError as exc:
-        error = _clean_probe_error(exc.stderr)
+        err_txt = (
+            (exc.stderr or b"").decode("utf-8", errors="replace")
+            if isinstance(exc.stderr, (bytes, bytearray))
+            else (exc.stderr or "")
+        )
+        error = _clean_probe_error(err_txt)
         logger.warning("ffprobe failed for %s: %s", path, error)
         return {}, "failed", error
     except json.JSONDecodeError as exc:
@@ -130,10 +138,7 @@ def _analyze_media(path: Path) -> dict:
         probe_status = "failed"
         probe_error = "未检测到可用的视频流"
 
-    container = (
-        (format_info.get("format_name") or "").split(",")[0]
-        or path.suffix.lstrip(".").lower()
-    )
+    container = (format_info.get("format_name") or "").split(",")[0] or path.suffix.lstrip(".").lower()
     duration = float(format_info.get("duration") or 0)
 
     subtitle_set = {item.get("codec", "") for item in subtitles if item.get("codec")}
@@ -182,21 +187,79 @@ def _analyze_media(path: Path) -> dict:
         asset["hls_status"] = "error"
         asset["hls_playlist"] = ""
         asset["last_error"] = probe_error
+    elif probe_status == "ready":
+        # Successful probe wipes any stale error carried from an earlier
+        # failed scan — otherwise the UI keeps shouting "no video stream" on
+        # a perfectly playable asset forever.
+        asset["last_error"] = ""
+        if existing and existing.get("hls_status") == "error":
+            asset["hls_status"] = "missing"
 
     return asset
 
 
 def scan_library() -> list[dict]:
+    """Scan ``DOWNLOAD_DIR`` and reconcile it with the ``media_assets`` table.
+
+    This is deliberately incremental:
+
+    - Files whose ``(size, mtime)`` match the stored row are considered
+      unchanged and skipped entirely — no fresh ``ffprobe`` needed.
+    - New or modified files get a full ``_analyze_media`` pass.
+    - Rows whose file disappeared from disk are pruned via
+      ``delete_missing_media_assets``.
+    """
     settings.DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    assets = []
-    valid_relative_paths = []
+
+    # Snapshot what's currently in the DB so we can do O(1) lookups per file
+    # without re-opening a connection in the hot loop.
+    known: dict[str, dict] = {row["relative_path"]: row for row in db.list_media_assets()}
+
+    valid_relative_paths: list[str] = []
     for path in sorted(settings.DOWNLOAD_DIR.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
             continue
+        relative_path = _relative_path(path)
+        valid_relative_paths.append(relative_path)
+
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            logger.warning("Stat failed for %s: %s", path, exc)
+            continue
+
+        previous = known.get(relative_path)
+        if (
+            previous
+            and int(previous.get("size", 0) or 0) == stat.st_size
+            and int(previous.get("modified_at", 0) or 0) == int(stat.st_mtime)
+            and previous.get("probe_status") not in ("pending", "failed", "unavailable")
+            # Also re-probe if we're carrying a stale error message on an
+            # otherwise-ready row — that's a sign of an old bug being fixed
+            # and the UI will still be rendering the stale error until we
+            # clear it via a fresh probe.
+            and not previous.get("last_error")
+        ):
+            # Unchanged on disk AND last probe was successful — keep as-is.
+            # Note: "failed" and "unavailable" are retried because they are
+            # recoverable (ffprobe got installed, Unicode path bug fixed,
+            # etc.) and we must not stay stuck on a stale negative cache.
+            continue
+
         asset = _analyze_media(path)
         db.upsert_media_asset(asset)
-        assets.append(db.get_media_asset(asset["media_id"]) or asset)
-        valid_relative_paths.append(asset["relative_path"])
+
+    if not valid_relative_paths and known:
+        # Disk looked empty but the DB has records — most likely a transient
+        # filesystem hiccup. Don't wipe out the catalogue; let the user
+        # trigger a manual scan when the storage is really empty.
+        logger.warning(
+            "Scan discovered zero media files under %s while %d entries still exist in DB. Skipping cleanup.",
+            settings.DOWNLOAD_DIR,
+            len(known),
+        )
+        return db.list_media_assets()
+
     db.delete_missing_media_assets(valid_relative_paths)
     return db.list_media_assets()
 

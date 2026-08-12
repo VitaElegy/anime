@@ -214,7 +214,9 @@ def send_friend_request(user: dict, username: str) -> dict:
     existing_incoming = db.get_friend_request_between(target_user_id, requester_user_id, status="pending")
     if existing_incoming:
         db.add_friendship_pair(requester_user_id, target_user_id)
-        accepted = db.update_friend_request_status(existing_incoming["request_id"], "accepted") or existing_incoming
+        accepted = (
+            db.update_friend_request_status(existing_incoming["request_id"], "accepted") or existing_incoming
+        )
         return {**accepted, "direction": "incoming"}
 
     created = db.create_friend_request(

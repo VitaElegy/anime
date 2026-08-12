@@ -1,16 +1,28 @@
 """Watch room routes for synchronized playback state."""
 
+import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 
 from app.dependencies.auth import get_current_user, get_optional_user
-
-from app.models import CreateWatchRoomRequest, RoomMessage, SendRoomMessageRequest, UpdateWatchRoomStateRequest, WatchRoom
-from app.services import watch_history, watch_room
+from app.models import (
+    CreateWatchRoomRequest,
+    RoomMessage,
+    SendRoomMessageRequest,
+    UpdateWatchRoomStateRequest,
+    WatchRoom,
+)
+from app.services import room_events, watch_history, watch_room
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Emit an SSE comment frame this often to keep intermediaries (nginx, load
+# balancers, corporate proxies) from considering the connection idle and
+# tearing it down mid-stream.
+_SSE_HEARTBEAT_SECONDS = 20
 
 
 @router.get("", response_model=list[WatchRoom], summary="List watch rooms")
@@ -119,3 +131,47 @@ async def create_watch_room_message(
     except ValueError as exc:
         status_code = 404 if str(exc) == "Watch room not found" else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.get("/{room_id}/events", summary="Server-Sent Events stream for watch room updates")
+async def watch_room_events(room_id: str, request: Request):
+    """Real-time event stream replacing the client-side polling loop.
+
+    Emits ``room_state`` and ``room_message`` events as they happen, plus
+    periodic heartbeats so intermediaries don't prematurely close the socket.
+    The client is expected to reconnect on its own — we don't try to be clever
+    about resumption because the full room snapshot is cheap to re-fetch via
+    the existing ``GET /watch/rooms/{id}`` endpoint.
+    """
+    room = watch_room.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Watch room not found")
+
+    async def event_generator():
+        # Send the current snapshot immediately so a freshly-connected client
+        # doesn't have to race its own HTTP fetch.
+        yield room_events.format_sse("room_state", room)
+
+        async with room_events.subscription(room_id) as queue:
+            while True:
+                if await request.is_disconnected():
+                    return
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=_SSE_HEARTBEAT_SECONDS)
+                except TimeoutError:
+                    # EventSource ignores ``:`` comment lines — they serve as
+                    # keepalives only.
+                    yield b": keepalive\n\n"
+                    continue
+                yield room_events.format_sse(message["type"], message["data"])
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            # Nginx buffers text responses by default; disable for SSE.
+            "X-Accel-Buffering": "no",
+        },
+    )

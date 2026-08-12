@@ -3,7 +3,9 @@
 import asyncio
 import logging
 
-from app.services import anilist, calendar as calendar_service, database as db, image_cache, nyaa, schedule, subsplease
+from app.services import anilist, image_cache, nyaa, schedule, subsplease
+from app.services import calendar as calendar_service
+from app.services import database as db
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +48,12 @@ async def warm_core_caches():
             await image_cache.prefetch_images(cover_urls[:24])
 
         day_entry_count = sum(len(items) for items in calendar_payload.week.values())
-        logger.info("Core caches warmed: latest=%d calendar_entries=%d covers=%d", len(latest.items), day_entry_count, len(cover_urls))
+        logger.info(
+            "Core caches warmed: latest=%d calendar_entries=%d covers=%d",
+            len(latest.items),
+            day_entry_count,
+            len(cover_urls),
+        )
     except Exception as exc:
         logger.warning("Failed to warm core caches: %s", exc)
 

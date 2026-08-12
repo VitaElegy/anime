@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import socket
+import threading
 
 import qbittorrentapi
 
@@ -18,20 +19,27 @@ class QBittorrentService:
     def __init__(self):
         self._client: qbittorrentapi.Client | None = None
         self._connected = False
+        # Serialises concurrent (re)connects from ``asyncio.to_thread``
+        # workers so two requests racing on a dead session don't log in
+        # twice and invalidate each other server-side.
+        self._connect_lock = threading.Lock()
 
     @property
     def is_connected(self) -> bool:
         return self._connected
 
-    def connect(self):
-        """Login to qBittorrent. Raises on failure."""
-        # Quick port check to avoid long urllib3 retry waits
+    def _do_connect(self):
+        """Actual login work — assumes the caller holds ``self._connect_lock``."""
+        # Quick port check to avoid long urllib3 retry waits.
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2)
         try:
             sock.connect((settings.QB_HOST, settings.QB_PORT))
-        except (ConnectionRefusedError, OSError, socket.timeout) as e:
-            raise ConnectionError(f"qBittorrent not reachable at {settings.QB_HOST}:{settings.QB_PORT}") from e
+        except (TimeoutError, ConnectionRefusedError, OSError) as e:
+            self._connected = False
+            raise ConnectionError(
+                f"qBittorrent not reachable at {settings.QB_HOST}:{settings.QB_PORT}"
+            ) from e
         finally:
             sock.close()
 
@@ -46,16 +54,22 @@ class QBittorrentService:
         self._connected = True
         logger.info("qBittorrent version: %s", self._client.app.version)
 
+    def connect(self):
+        """Login to qBittorrent. Raises on failure."""
+        with self._connect_lock:
+            self._do_connect()
+
     def _ensure_connected(self):
-        """Reconnect if needed."""
-        if not self._connected or self._client is None:
-            self.connect()
-            return
-        try:
-            self._client.app.version  # lightweight ping
-        except Exception:
-            logger.warning("qBittorrent connection lost, reconnecting...")
-            self.connect()
+        """Reconnect if needed, without racing concurrent callers."""
+        with self._connect_lock:
+            if not self._connected or self._client is None:
+                self._do_connect()
+                return
+            try:
+                _ = self._client.app.version  # lightweight ping
+            except Exception:
+                logger.warning("qBittorrent connection lost, reconnecting...")
+                self._do_connect()
 
     def add_torrent(
         self,

@@ -4,10 +4,9 @@ import hashlib
 import logging
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from app.services import anilist
-from app.services import bangumi
+from app.services import anilist, bangumi
 from app.services import database as db
 
 logger = logging.getLogger(__name__)
@@ -112,7 +111,7 @@ def _created_at_epoch(row: dict | None) -> int:
             except ValueError:
                 return 0
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         return int(parsed.timestamp())
     return 0
 
@@ -174,7 +173,9 @@ async def _resolve_with_anilist_bridge(cleaned: str, force_refresh: bool = False
     if not items:
         return None
 
-    preferred = next((item for item in items if item.get("cover_large") or item.get("cover_medium")), items[0])
+    preferred = next(
+        (item for item in items if item.get("cover_large") or item.get("cover_medium")), items[0]
+    )
     bridge_terms: list[str] = []
     for key in ("title_native", "title_english", "title_romaji", "title_preferred"):
         value = (preferred.get(key) or "").strip()
@@ -267,7 +268,11 @@ async def resolve_titles(titles: list[str], limit: int = 30, force_refresh: bool
                     "name": bridged["name"],
                 }
             )
-            logger.info("Cover resolved via AniList bridge: '%s' -> %s", cleaned, bridged["name_cn"] or bridged["name"])
+            logger.info(
+                "Cover resolved via AniList bridge: '%s' -> %s",
+                cleaned,
+                bridged["name_cn"] or bridged["name"],
+            )
             continue
 
         if not bridged:

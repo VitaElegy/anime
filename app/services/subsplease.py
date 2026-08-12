@@ -5,7 +5,6 @@ import logging
 import feedparser
 import httpx
 
-from app.config import settings
 from app.models import SearchResult, TorrentItem
 from app.services import response_cache
 

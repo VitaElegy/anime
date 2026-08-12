@@ -28,7 +28,7 @@ async def add_download(req: DownloadRequest):
         )
         return {"status": "ok" if result == "Ok." else "error", "detail": result}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/batch", summary="Batch add multiple downloads concurrently")

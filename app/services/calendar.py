@@ -74,7 +74,9 @@ async def get_calendar_overview(quality: int = 1080, force_refresh: bool = False
     cache_key = response_cache.make_cache_key("calendar.overview", quality=quality)
 
     async def producer():
-        return (await _build_calendar_overview(quality=quality, force_refresh=force_refresh)).model_dump(mode="json")
+        return (await _build_calendar_overview(quality=quality, force_refresh=force_refresh)).model_dump(
+            mode="json"
+        )
 
     payload = await response_cache.get_or_set_json(
         cache_key=cache_key,
@@ -84,7 +86,9 @@ async def get_calendar_overview(quality: int = 1080, force_refresh: bool = False
         force_refresh=force_refresh,
         allow_stale=True,
     )
-    return CalendarOverview.model_validate(payload or {"week": {}, "timeline": [], "generated_at": int(time.time())})
+    return CalendarOverview.model_validate(
+        payload or {"week": {}, "timeline": [], "generated_at": int(time.time())}
+    )
 
 
 async def _build_calendar_overview(quality: int = 1080, force_refresh: bool = False) -> CalendarOverview:
@@ -113,7 +117,9 @@ async def _build_calendar_overview(quality: int = 1080, force_refresh: bool = Fa
     cover_map: dict[str, dict[str, str | int]] = {}
     unique_titles = list(representative_titles.values())
     if unique_titles:
-        resolved_covers = await cover_resolver.resolve_titles(unique_titles, limit=len(unique_titles), force_refresh=force_refresh)
+        resolved_covers = await cover_resolver.resolve_titles(
+            unique_titles, limit=len(unique_titles), force_refresh=force_refresh
+        )
         for resolved in resolved_covers:
             if not resolved.get("cover_url"):
                 continue

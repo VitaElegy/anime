@@ -148,11 +148,12 @@ async def _search_uncached(keyword: str, page: int = 1, per_page: int = 20) -> d
     import re
 
     result = await _do_search(keyword, page, per_page)
-    
+
     # If no results and keyword contains Chinese, translate via Bangumi
-    if not result["items"] and re.search(r'[\u4e00-\u9fff]', keyword):
+    if not result["items"] and re.search(r"[\u4e00-\u9fff]", keyword):
         try:
             from app.services import bangumi
+
             bgm_results = await bangumi.search(keyword, limit=3)
             for bgm in bgm_results:
                 # Try Japanese name on AniList
@@ -175,10 +176,13 @@ async def _do_search(keyword: str, page: int = 1, per_page: int = 20) -> dict:
     """Raw AniList search."""
     client = _get_client()
     try:
-        resp = await client.post(ANILIST_URL, json={
-            "query": SEARCH_QUERY,
-            "variables": {"search": keyword, "page": page, "perPage": per_page},
-        })
+        resp = await client.post(
+            ANILIST_URL,
+            json={
+                "query": SEARCH_QUERY,
+                "variables": {"search": keyword, "page": page, "perPage": per_page},
+            },
+        )
         resp.raise_for_status()
         data = resp.json()
 
@@ -236,10 +240,13 @@ async def _get_trending_uncached(season: str = "", year: int = 0, page: int = 1,
         variables["seasonYear"] = year
 
     try:
-        resp = await client.post(ANILIST_URL, json={
-            "query": TRENDING_QUERY,
-            "variables": variables,
-        })
+        resp = await client.post(
+            ANILIST_URL,
+            json={
+                "query": TRENDING_QUERY,
+                "variables": variables,
+            },
+        )
         resp.raise_for_status()
         data = resp.json()
         media_list = data.get("data", {}).get("Page", {}).get("media", [])
@@ -278,10 +285,13 @@ async def _get_airing_schedule_uncached(page: int = 1, per_page: int = 50) -> di
     """Fetch upcoming airing schedule."""
     client = _get_client()
     try:
-        resp = await client.post(ANILIST_URL, json={
-            "query": SCHEDULE_QUERY,
-            "variables": {"page": page, "perPage": per_page},
-        })
+        resp = await client.post(
+            ANILIST_URL,
+            json={
+                "query": SCHEDULE_QUERY,
+                "variables": {"page": page, "perPage": per_page},
+            },
+        )
         resp.raise_for_status()
         data = resp.json()
         schedules = data.get("data", {}).get("Page", {}).get("airingSchedules", [])

@@ -47,7 +47,9 @@ async def create_friend_request(req: FriendRequestCreateRequest, user: dict = De
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/friends/requests/{request_id}/accept", response_model=FriendRequest, summary="Accept friend request")
+@router.post(
+    "/friends/requests/{request_id}/accept", response_model=FriendRequest, summary="Accept friend request"
+)
 async def accept_request(request_id: int, user: dict = Depends(get_current_user)):
     try:
         return social.accept_friend_request(user, request_id)
@@ -55,7 +57,9 @@ async def accept_request(request_id: int, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/friends/requests/{request_id}/reject", response_model=FriendRequest, summary="Reject friend request")
+@router.post(
+    "/friends/requests/{request_id}/reject", response_model=FriendRequest, summary="Reject friend request"
+)
 async def reject_request(request_id: int, user: dict = Depends(get_current_user)):
     try:
         return social.reject_friend_request(user, request_id)
@@ -85,7 +89,11 @@ async def invite_friend_to_room(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/room-invitations/{invitation_id}/accept", response_model=RoomInvitation, summary="Accept a room invitation")
+@router.post(
+    "/room-invitations/{invitation_id}/accept",
+    response_model=RoomInvitation,
+    summary="Accept a room invitation",
+)
 async def accept_room_invitation(invitation_id: int, user: dict = Depends(get_current_user)):
     try:
         return social.accept_room_invitation(user, invitation_id)
@@ -93,7 +101,11 @@ async def accept_room_invitation(invitation_id: int, user: dict = Depends(get_cu
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/room-invitations/{invitation_id}/dismiss", response_model=RoomInvitation, summary="Dismiss a room invitation")
+@router.post(
+    "/room-invitations/{invitation_id}/dismiss",
+    response_model=RoomInvitation,
+    summary="Dismiss a room invitation",
+)
 async def dismiss_room_invitation(invitation_id: int, user: dict = Depends(get_current_user)):
     try:
         return social.dismiss_room_invitation(user, invitation_id)
@@ -101,7 +113,11 @@ async def dismiss_room_invitation(invitation_id: int, user: dict = Depends(get_c
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/friends/{friend_user_id}/messages", response_model=list[DirectMessage], summary="List direct messages with a friend")
+@router.get(
+    "/friends/{friend_user_id}/messages",
+    response_model=list[DirectMessage],
+    summary="List direct messages with a friend",
+)
 async def list_friend_messages(
     friend_user_id: int,
     limit: int = Query(50, ge=1, le=200),
@@ -113,7 +129,11 @@ async def list_friend_messages(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/friends/{friend_user_id}/messages", response_model=DirectMessage, summary="Send direct message to a friend")
+@router.post(
+    "/friends/{friend_user_id}/messages",
+    response_model=DirectMessage,
+    summary="Send direct message to a friend",
+)
 async def send_friend_message(
     friend_user_id: int,
     req: SendDirectMessageRequest,

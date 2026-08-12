@@ -17,7 +17,9 @@ def _normalize_progress(
     state = room.get("state", {})
     asset = media_library.get_media_asset(media_id)
     resolved_mode = playback_mode or state.get("playback_mode", "direct_play")
-    resolved_position = float(position_seconds if position_seconds is not None else state.get("position_seconds", 0.0) or 0.0)
+    resolved_position = float(
+        position_seconds if position_seconds is not None else state.get("position_seconds", 0.0) or 0.0
+    )
     resolved_paused = bool(paused if paused is not None else state.get("paused", True))
     duration_seconds = float(asset.get("duration", 0) or 0) if asset else 0.0
     if duration_seconds > 0:

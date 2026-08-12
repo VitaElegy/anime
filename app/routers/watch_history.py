@@ -17,7 +17,9 @@ async def list_watch_history(
     return watch_history.list_history(int(user["id"]), limit=limit)
 
 
-@router.get("/resume", response_model=WatchHistoryItem | None, summary="Get personal resume progress for a room")
+@router.get(
+    "/resume", response_model=WatchHistoryItem | None, summary="Get personal resume progress for a room"
+)
 async def get_watch_resume(
     room_id: str = Query(..., min_length=1),
     media_id: str = Query(default=""),
