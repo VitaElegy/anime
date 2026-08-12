@@ -15,6 +15,7 @@
 ## ✨ 功能特性
 
 - 🔍 **多源聚合搜索**：Nyaa / SubsPlease / Mikan / AnimeGarden 四源并行，中文关键词优先（`asyncio.gather` + 去重排序）；Bangumi / AniList / Bilibili 元数据检索
+- ▶️ **在线观看渠道**：AGE / Libvio / Zzzfun / Anilibria / Gogoanime 聚合搜索，详情页一键点播（渠道卡片 → 集数 → hls.js 直播）；SSRF 防护代理 + HLS 广告段过滤
 - ⬇️ **种子下载**：通过 qBittorrent WebUI API 下发任务，支持批量、暂停/恢复、进度查询
 - 🎞️ **高清播放管线**：HLS ABR 三档码率（1080p / 720p / 480p）、硬件编码自动检测（NVENC / QSV / AMF / VideoToolbox）、HEVC MKV 4K 适配、HTTP Range 流式播放
 - 👥 **多人同看**：SSE 房间实时同步（播放 / 暂停 / seek / 倍速）、自定义控制条、聊天、好友、私信、房间邀请
@@ -27,9 +28,10 @@
 ```text
 ┌─────────────────────────────┐        ┌──────────────────────────────┐
 │  React 19 + Vite + Tailwind │  /api  │  FastAPI (app/)              │
-│  hls.js / SSE EventSource   │ ─────▶ │  ├─ routers/  17 组 REST 路由 │
+│  hls.js / SSE EventSource   │ ─────▶ │  ├─ routers/  18 组 REST 路由 │
 │  frontend/src               │ ◀───── │  ├─ services/ 外部源与业务层  │
-└─────────────────────────────┘        │  └─ SQLite (data/nicotracker.db)
+└─────────────────────────────┘        │  ├─ channels/ 在线观看渠道层  │
+                                       │  └─ SQLite (data/nicotracker.db)
                                        └──────────┬─────────────────────
                                                   │
               ┌─────────────────────┬─────────────┴──────────┬──────────────────┐
@@ -125,7 +127,7 @@ docker compose --profile with-bt up -d --build
 | 数据源 | `ANIME_BANGUMI_API_BASE` `ANIME_NYAA_BASE_URL` `ANIME_SUBSPLEASE_RSS` `ANIME_MIKAN_BASE_URL` `ANIME_MIKAN_MIRROR_URL` `ANIME_ANIME_GARDEN_API_BASE` `ANIME_BILIBILI_API_BASE` |
 | 存储路径 | `ANIME_DOWNLOAD_DIR` `ANIME_COVER_CACHE_DIR` `ANIME_STREAM_CACHE_DIR` `ANIME_HLS_OUTPUT_DIR` |
 | 媒体工具 | `ANIME_FFMPEG_BIN` `ANIME_FFPROBE_BIN` |
-| 代理 | `ANIME_HTTP_PROXY`（Nyaa / dmhy 等被墙源） |
+| 代理 | `ANIME_HTTP_PROXY`（Nyaa / dmhy 等被墙源 + 在线渠道） |
 | 限流 | `ANIME_NYAA_RATE_LIMIT` `ANIME_BANGUMI_RATE_LIMIT` `ANIME_MIKAN_RATE_LIMIT` `ANIME_ANIME_GARDEN_RATE_LIMIT` `ANIME_BILIBILI_RATE_LIMIT` |
 
 > ⚠️ `ANIME_ENV=production` 时若仍使用 qBittorrent 出厂默认密码 `adminadmin`，后端会**拒绝启动**（`app/config.py` 的 `assert_runtime_safety`）。
@@ -140,9 +142,9 @@ make build         # 前端生产构建（tsc + vite build）
 
 | 检查项 | 命令 | 当前状态 |
 |---|---|---|
-| 后端单测 | `pytest tests/ -q` | 77 passed |
+| 后端单测 | `pytest tests/ -q` | 108 passed |
 | 后端 Lint | `ruff check app/ tests/` | ✅ |
-| 前端单测 | `npm test -- --run`（frontend/） | 9 passed |
+| 前端单测 | `npm test -- --run`（frontend/） | 13 passed |
 | 前端 Lint | `npm run lint`（frontend/） | ✅ |
 | 前端构建 | `npm run build`（frontend/） | ✅ |
 
@@ -155,6 +157,7 @@ make build         # 前端生产构建（tsc + vite build）
 | [docs/SEARCH_API.md](docs/SEARCH_API.md) | 搜索 API 参考（`/api/search/anime`、`/api/search/torrents`） |
 | [docs/WATCH_SYNC_PROTOCOL.md](docs/WATCH_SYNC_PROTOCOL.md) | 同看 SSE 同步协议 v1 与 v2 预留位 |
 | [docs/RESOURCE_DIRECTORY.md](docs/RESOURCE_DIRECTORY.md) | 高清影视资源源站目录与集成 ROI 排序 |
+| [docs/CHANNEL_ARCHITECTURE.md](docs/CHANNEL_ARCHITECTURE.md) | 在线观看渠道架构规范（角色边界 / 接口契约 / 测试要求） |
 | [docs/RESOURCE_GUIDE.md](docs/RESOURCE_GUIDE.md) | 资源站使用指南 |
 | [docs/OPEN_SOURCE_PLAN.md](docs/OPEN_SOURCE_PLAN.md) | 开源化整改规划与跟踪清单 |
 | [SEARCH_REDESIGN_REPORT.md](SEARCH_REDESIGN_REPORT.md) | 搜索重构攻坚报告（根因 / 实施 / 验证） |

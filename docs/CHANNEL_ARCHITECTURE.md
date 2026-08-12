@@ -104,6 +104,8 @@
 - 转发时自动带上该渠道要求的 `Referer` / `User-Agent` / 其它自定义 headers
 - 支持 HTTP Range（分片播放必需）；返回正确的 Content-Type（`application/vnd.apple.mpegurl` / `video/mp2t`）
 - 只允许代理 `http(s)` 且带 `host` 白名单（防 SSRF：仅放行渠道注册表中的域名前缀）
+- 对已知会掺广告段的镜像（megaplay 系）做 HLS 清单实时过滤：丢弃 `tiktokcdn` 等
+  广告 EXTINF+URI 对，保证 hls.js 只收到纯视频分片
 
 **不负责**：解析、转码、缓存分片（m3u8 清单可短 TTL 缓存，分片不缓存）。
 
@@ -126,14 +128,17 @@
 
 | id | 名称 | 类型 | 实现来源 | 状态 |
 |---|---|---|---|---|
-| `age` | AGE动漫 | 在线播放（JSON API） | Miru `agedm.org.js` 套路，`api.agedm.org/v2` | 实现 |
-| `libvio` | Libvio 在线 | 在线播放（HTML+签名） | Anime-API `libvio.py`（MIT，移植+署名） | 实现 |
-| `zzzfun` | Zzzfun | 在线播放（App API） | Anime-API `zzzfun.py`（MIT，移植+署名） | 实现 |
+| `age` | AGE动漫 | 在线播放（JSON API） | Miru `agedm.org.js` 套路，`api.agedm.org/v2` | 实现（2026-08 实测 TLS 阻断） |
+| `libvio` | Libvio 在线 | 在线播放（HTML+签名） | Anime-API `libvio.py`（MIT，移植+署名） | 实现（2026-08 实测 403/超时） |
+| `zzzfun` | Zzzfun | 在线播放（App API） | Anime-API `zzzfun.py`（MIT，移植+署名） | 实现（2026-08 实测域名失效） |
+| `anilibria` | Anilibria | 在线播放（开放 JSON API） | 官方 `api/v1`，`cache.libria.fun` 直连 HLS | 实现（2026-08 实测可播） |
+| `gogoanime` | Gogoanime | 在线播放（HTML + megaplay HLS） | 独立实现，`getSourcesNew` 无广告 | 实现（2026-08 实测可播） |
 | `bilibili` | Bilibili 番剧 | 元数据+官方外链（不代理播放） | 现有 `app/services/bilibili.py` | 实现 |
 
-> 后续可增：`yhdm`（樱花动漫，需移植 AES 解密）、`hianime`（英文源）、
-> `animepahe`（参考 Animepahe-API）。增渠道 = 新增一个 Provider 文件 + 注册一行，
-> 前端无需改动。
+> 渠道可用性会漂移：2026-08-13 实测 AGE/Libvio/Zzzfun 全部不可用，Anilibria 与
+> Gogoanime 为当时验证过的可用备选。新源候选：`yhdm`（樱花动漫，需移植 AES 解密）、
+> `hianime`（英文源）、`animepahe`（参考 Animepahe-API，需 TLS fingerprint）。
+> 增渠道 = 新增一个 Provider 文件 + 注册一行 + 白名单加域名，前端无需改动。
 
 ## 3. 接口契约（Pydantic）
 
