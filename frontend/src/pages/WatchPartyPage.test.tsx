@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -51,6 +51,7 @@ const sampleAsset: MediaAsset = {
   hls_status: 'ready',
   hls_playlist: '/media-1/master.m3u8',
   hls_updated_at: 1,
+  hls_progress: 100,
   last_error: '',
 }
 
@@ -144,11 +145,12 @@ describe('WatchPartyPage', () => {
     expect(await screen.findByText('收到的房间邀请')).toBeInTheDocument()
     expect(screen.getByText('alice 邀请你进入「一起看」')).toBeInTheDocument()
     expect(screen.getByText('留言：来一起看吧')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '看房间' })).toHaveAttribute('href', '/watch/room-1')
 
+    fireEvent.click(screen.getByRole('button', { name: '好友与聊天' }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '删除好友' })).toBeInTheDocument()
     })
-    expect(screen.getByRole('link', { name: '看房间' })).toHaveAttribute('href', '/watch/room-1')
   })
 
   it('keeps lobby content visible when media library loading fails', async () => {
@@ -160,8 +162,13 @@ describe('WatchPartyPage', () => {
       </MemoryRouter>,
     )
 
+    // Lobby tab keeps working even though the media library request failed.
+    expect(await screen.findByText('alice 邀请你进入「一起看」')).toBeInTheDocument()
+    expect(screen.getByText('收到的房间邀请')).toBeInTheDocument()
+
+    // The media-library error only shows on its own tab, not in the lobby.
+    fireEvent.click(screen.getByRole('button', { name: '发起同看' }))
     expect(await screen.findByText('媒体库暂时加载失败：library offline')).toBeInTheDocument()
-    expect((await screen.findAllByText('alice 邀请你进入「一起看」')).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: '重试媒体库' })).toBeInTheDocument()
     expect(screen.queryByText(/当前还没有可用片源/)).not.toBeInTheDocument()
   })
@@ -180,9 +187,14 @@ describe('WatchPartyPage', () => {
       </MemoryRouter>,
     )
 
+    // Media library keeps rendering on its own tab even though the lobby failed.
+    fireEvent.click(screen.getByRole('button', { name: '发起同看' }))
     expect((await screen.findAllByText('Test Anime Episode 1')).length).toBeGreaterThan(0)
-    expect(screen.getByText('放映大厅暂时加载失败：lobby unavailable')).toBeInTheDocument()
-    expect((await screen.findAllByRole('button', { name: '重试大厅' })).length).toBeGreaterThan(0)
     expect(screen.queryByText('目前还没有登录用户在大厅或房间里在线。')).not.toBeInTheDocument()
+
+    // Lobby tab shows the real error state instead of pretending everything is fine.
+    fireEvent.click(screen.getByRole('button', { name: '大厅动态' }))
+    expect(await screen.findByText('放映大厅暂时加载失败：lobby unavailable')).toBeInTheDocument()
+    expect((await screen.findAllByRole('button', { name: '重试大厅' })).length).toBeGreaterThan(0)
   })
 })

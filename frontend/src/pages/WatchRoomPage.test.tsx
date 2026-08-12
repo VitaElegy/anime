@@ -69,6 +69,7 @@ const sampleAsset: MediaAsset = {
   hls_status: 'ready',
   hls_playlist: '/room-test/master.m3u8',
   hls_updated_at: 1,
+  hls_progress: 100,
   last_error: '',
 }
 

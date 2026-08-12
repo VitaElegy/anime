@@ -1,12 +1,11 @@
-import time
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from app.main import app
 from app.services import database as db
+from fastapi.testclient import TestClient
 
 
 class SocialFeatureFlowTests(unittest.TestCase):
@@ -40,7 +39,9 @@ class SocialFeatureFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()["room_id"]
 
-    def befriend(self, sender_headers: dict[str, str], target_headers: dict[str, str], target_username: str) -> int:
+    def befriend(
+        self, sender_headers: dict[str, str], target_headers: dict[str, str], target_username: str
+    ) -> int:
         request_response = self.client.post(
             "/api/social/friends/requests",
             headers=sender_headers,
@@ -281,8 +282,13 @@ class SocialFeatureFlowTests(unittest.TestCase):
             headers=bob_headers,
             json={"paused": False, "position_seconds": 12},
         )
+        # Non-owners can never mutate playback state, regardless of presence —
+        # this is the behaviour P0-#3 hardened against.
         self.assertEqual(room_state_response.status_code, 403, room_state_response.text)
-        self.assertEqual(room_state_response.json()["detail"], "请先进入房间后再操作")
+        self.assertEqual(
+            room_state_response.json()["detail"],
+            "只有房主才能调整播放状态或切换片源",
+        )
 
         room_invite_response = self.client.post(
             f"/api/social/rooms/{room_id}/invite",
@@ -301,12 +307,17 @@ class SocialFeatureFlowTests(unittest.TestCase):
         )
         self.assertEqual(allowed_message_response.status_code, 200, allowed_message_response.text)
 
-        allowed_state_response = self.client.put(
+        # Presence no longer grants state-mutation rights — only the owner may.
+        denied_state_response = self.client.put(
             f"/api/watch/rooms/{room_id}/state",
             headers=bob_headers,
             json={"paused": False, "position_seconds": 18},
         )
-        self.assertEqual(allowed_state_response.status_code, 200, allowed_state_response.text)
+        self.assertEqual(denied_state_response.status_code, 403, denied_state_response.text)
+        self.assertEqual(
+            denied_state_response.json()["detail"],
+            "只有房主才能调整播放状态或切换片源",
+        )
 
         allowed_invite_response = self.client.post(
             f"/api/social/rooms/{room_id}/invite",
@@ -327,7 +338,7 @@ class SocialFeatureFlowTests(unittest.TestCase):
     def test_lobby_cleanup_deletes_old_empty_owned_rooms(self):
         _, alice_headers = self.register_user("alice_cleanup_owned")
         room_id = self.create_room(alice_headers, "Owned Cleanup Room")
-        self.age_room(room_id, 180)
+        self.age_room(room_id, 700)
 
         lobby_response = self.client.get("/api/social/lobby", headers=alice_headers)
         self.assertEqual(lobby_response.status_code, 200, lobby_response.text)
@@ -372,6 +383,64 @@ class SocialFeatureFlowTests(unittest.TestCase):
         room_ids = {item["room_id"] for item in lobby_response.json()["rooms"]}
         self.assertIn(room_id, room_ids)
         self.assertIsNotNone(db.get_watch_room(room_id))
+
+    def test_accepted_invitation_grants_chat_but_not_state_mutation(self):
+        """P0-#3 regression test.
+
+        An invited-and-accepted member should be able to participate (chat,
+        trigger HLS prep) without a presence heartbeat, but must never gain
+        the ability to mutate playback state — only the owner may.
+        """
+        alice_id, alice_headers = self.register_user("alice_invite_perm")
+        bob_id, bob_headers = self.register_user("bob_invite_perm")
+
+        room_id = self.create_room(alice_headers, "Permission Room")
+        self.befriend(alice_headers, bob_headers, "bob_invite_perm")
+
+        invite_response = self.client.post(
+            f"/api/social/rooms/{room_id}/invite",
+            headers=alice_headers,
+            json={"friend_user_id": bob_id, "message": "来一起看"},
+        )
+        self.assertEqual(invite_response.status_code, 200, invite_response.text)
+        invitation_id = int(invite_response.json()["invitation_id"])
+
+        accept_response = self.client.post(
+            f"/api/social/room-invitations/{invitation_id}/accept",
+            headers=bob_headers,
+        )
+        self.assertEqual(accept_response.status_code, 200, accept_response.text)
+
+        # With an accepted invitation in hand, Bob can chat without needing
+        # a presence heartbeat first.
+        bob_chat_response = self.client.post(
+            f"/api/watch/rooms/{room_id}/messages",
+            headers=bob_headers,
+            json={"body": "Hello from an invited member"},
+        )
+        self.assertEqual(bob_chat_response.status_code, 200, bob_chat_response.text)
+
+        # But Bob must NOT be able to mutate playback state — state changes
+        # are owner-only, regardless of membership.
+        bob_state_response = self.client.put(
+            f"/api/watch/rooms/{room_id}/state",
+            headers=bob_headers,
+            json={"paused": True, "position_seconds": 42},
+        )
+        self.assertEqual(bob_state_response.status_code, 403, bob_state_response.text)
+        self.assertEqual(
+            bob_state_response.json()["detail"],
+            "只有房主才能调整播放状态或切换片源",
+        )
+
+        # Alice (the owner) drives state freely without any presence hoops.
+        alice_state_response = self.client.put(
+            f"/api/watch/rooms/{room_id}/state",
+            headers=alice_headers,
+            json={"paused": True, "position_seconds": 42},
+        )
+        self.assertEqual(alice_state_response.status_code, 200, alice_state_response.text)
+        self.assertEqual(alice_state_response.json()["owner_user_id"], alice_id)
 
 
 if __name__ == "__main__":
