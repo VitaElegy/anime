@@ -1,9 +1,8 @@
 """Smoke test — verify all services that are reachable."""
 
 import asyncio
-import json
-import sys
 import os
+import sys
 
 # Fix Windows console encoding
 if sys.platform == "win32":
@@ -11,8 +10,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.services import nyaa, subsplease, bangumi
-
+from app.services import bangumi, nyaa, subsplease
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -57,7 +55,7 @@ async def test_subsplease():
     if filtered.items:
         ok(f"关键词过滤 '{keyword[:10]}' → {filtered.total} 结果")
     else:
-        warn(f"关键词过滤无结果（可能拼写问题）")
+        warn("关键词过滤无结果（可能拼写问题）")
 
     return True
 

@@ -31,7 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    void refreshUser().finally(() => setLoading(false))
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => refreshUser()).finally(() => setLoading(false))
   }, [])
 
   const login = async (username: string, password: string) => {

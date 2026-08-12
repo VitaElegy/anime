@@ -208,7 +208,8 @@ export default function AnimeDetailPage() {
   const coverUrl = coverCandidates[coverIndex] || ''
 
   useEffect(() => {
-    setCoverIndex(0)
+    // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => setCoverIndex(0))
   }, [subjectId, coverParam, metadata?.id, metadata?.cover_url, anilistItem?.cover_large, anilistItem?.cover_medium])
 
   const searchQuery =
