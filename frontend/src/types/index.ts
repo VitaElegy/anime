@@ -345,3 +345,60 @@ export interface WatchLobbyOverview {
   outgoing_room_invitations: RoomInvitation[]
   generated_at: number
 }
+
+// ---------------------------------------------------------------------------
+// Online watch channels — mirror of app/models.py (docs/CHANNEL_ARCHITECTURE.md)
+// ---------------------------------------------------------------------------
+
+export interface ChannelInfo {
+  id: string
+  name: string
+  enabled: boolean
+  healthy: boolean
+  supports_search: boolean
+  supports_detail: boolean
+  supports_streams: boolean
+  language: string
+  description: string
+  external: boolean
+}
+
+export interface ChannelSearchResult {
+  channel: string
+  title: string
+  title_original: string
+  cover_url: string
+  description: string
+  year: string
+  detail_ref: string
+  extra: Record<string, unknown>
+}
+
+export interface ChannelEpisode {
+  title: string
+  episode_ref: string
+  extra: Record<string, unknown>
+}
+
+export interface ChannelEpisodeGroup {
+  title: string
+  episodes: ChannelEpisode[]
+}
+
+export interface ChannelDetail {
+  channel: string
+  title: string
+  cover_url: string
+  description: string
+  groups: ChannelEpisodeGroup[]
+}
+
+export interface ChannelStream {
+  type: string
+  url: string
+  quality: string
+  format: string
+  headers: Record<string, string>
+  expires_in: number
+  note: string
+}

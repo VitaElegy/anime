@@ -22,6 +22,7 @@ from app.routers import (
     schedule,
     search,
     social,
+    watch,
     watch_history,
     watch_rooms,
 )
@@ -117,6 +118,7 @@ app.include_router(media.router, prefix="/api/media", tags=["Media"])
 app.include_router(watch_rooms.router, prefix="/api/watch/rooms", tags=["Watch Rooms"])
 app.include_router(watch_history.router, prefix="/api/watch/history", tags=["Watch History"])
 app.include_router(social.router, prefix="/api/social", tags=["Social"])
+app.include_router(watch.router, prefix="/api/watch", tags=["Watch Channels"])
 
 
 @app.exception_handler(Exception)
