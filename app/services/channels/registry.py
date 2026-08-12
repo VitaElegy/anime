@@ -1,0 +1,229 @@
+"""Channel registry — registration, health tracking and graceful degradation.
+
+See docs/CHANNEL_ARCHITECTURE.md §1.8.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from collections.abc import Iterable
+
+from app.models import ChannelDetail, ChannelInfo, ChannelSearchResult, ChannelStream
+from app.services import response_cache
+from app.services.channels.age import AgeChannel
+from app.services.channels.base import ChannelError, ChannelProvider
+from app.services.channels.bilibili_channel import BilibiliChannel
+from app.services.channels.libvio import LibvioChannel
+from app.services.channels.zzzfun import ZzzfunChannel
+from app.services.keyword_expand import expand_keywords, normalize_title_key
+
+logger = logging.getLogger(__name__)
+
+FAILURE_THRESHOLD = 3
+COOLDOWN_SECONDS = 120
+
+# Cache TTLs from docs/CHANNEL_ARCHITECTURE.md §1.7.
+SEARCH_TTL_SECONDS = 300
+DETAIL_TTL_SECONDS = 600
+STREAM_TTL_SECONDS = 120
+
+# Keyword expansion bounds (docs §1.2): try at most this many alternatives per
+# provider so a broad expansion cannot explode into N×M upstream requests.
+MAX_ALTERNATIVES = 4
+EXPAND_TIMEOUT_SECONDS = 2.0
+
+
+async def _expand_keywords(keyword: str) -> list[str]:
+    """Expand the user keyword, falling back to just the original on any error."""
+    try:
+        alternatives = await asyncio.wait_for(expand_keywords(keyword), timeout=EXPAND_TIMEOUT_SECONDS)
+    except Exception:
+        alternatives = []
+    if keyword not in alternatives:
+        alternatives.insert(0, keyword)
+    return alternatives[:MAX_ALTERNATIVES]
+
+
+class ChannelRegistry:
+    """Holds every channel provider and routes aggregated calls to healthy ones."""
+
+    def __init__(self) -> None:
+        self._providers: dict[str, ChannelProvider] = {}
+        self._failures: dict[str, int] = {}
+        self._cooldown_until: dict[str, float] = {}
+        # In-memory stream cache only — resolved URLs are short-lived and must
+        # not be persisted (docs §1.7).
+        self._stream_cache: dict[str, tuple[float, list[dict]]] = {}
+
+    # ------------------------------------------------------------------ setup
+
+    def register(self, provider: ChannelProvider) -> None:
+        self._providers[provider.id] = provider
+
+    def register_all(self, providers: Iterable[ChannelProvider]) -> None:
+        for provider in providers:
+            self.register(provider)
+
+    def get(self, channel_id: str) -> ChannelProvider | None:
+        return self._providers.get(channel_id)
+
+    # ----------------------------------------------------------------- health
+
+    def is_healthy(self, provider: ChannelProvider) -> bool:
+        if not provider.enabled:
+            return False
+        if self._failures.get(provider.id, 0) >= FAILURE_THRESHOLD:
+            # Circuit is open until the cooldown expires; after that a single
+            # success closes it again.
+            return time.monotonic() >= self._cooldown_until.get(provider.id, 0.0)
+        return True
+
+    def _mark_failure(self, channel_id: str) -> None:
+        count = self._failures.get(channel_id, 0) + 1
+        self._failures[channel_id] = count
+        if count >= FAILURE_THRESHOLD:
+            self._cooldown_until[channel_id] = time.monotonic() + COOLDOWN_SECONDS
+            logger.warning("Channel %s marked unhealthy (cooldown %ss)", channel_id, COOLDOWN_SECONDS)
+
+    def _mark_success(self, channel_id: str) -> None:
+        self._failures.pop(channel_id, None)
+        self._cooldown_until.pop(channel_id, None)
+
+    def list_channels(self) -> list[ChannelInfo]:
+        return [provider.info(healthy=self.is_healthy(provider)) for provider in self._providers.values()]
+
+    # ------------------------------------------------------------- aggregation
+
+    async def search(self, keyword: str, page: int = 1) -> list[ChannelSearchResult]:
+        """Run search on all healthy channels in parallel, skipping failures.
+
+        The keyword is first expanded (Chinese/Japanese → English/Romaji
+        alternatives, docs §1.2), then every healthy provider is queried per
+        alternative. Results are deduped per channel by normalized title and
+        cached for SEARCH_TTL_SECONDS (docs §1.7).
+        """
+        alternatives = await _expand_keywords(keyword)
+        results: list[ChannelSearchResult] = []
+        seen: set[tuple[str, str]] = set()
+
+        async def _run(provider: ChannelProvider) -> None:
+            if not provider.supports_search or not self.is_healthy(provider):
+                return
+            succeeded = False
+            failed = False
+            for alt in alternatives:
+                cache_key = response_cache.make_cache_key(
+                    "channel.search.v1",
+                    channel=provider.id,
+                    keyword=alt,
+                    page=page,
+                )
+                try:
+                    payload = await response_cache.get_or_set_json(
+                        cache_key=cache_key,
+                        cache_group="channel.search",
+                        ttl_seconds=SEARCH_TTL_SECONDS,
+                        producer=lambda p=provider, a=alt: _search_producer(p, a, page),
+                    )
+                    succeeded = True
+                    for item in payload or []:
+                        try:
+                            hit = ChannelSearchResult.model_validate(item)
+                        except Exception:
+                            logger.warning("Channel %s returned an invalid search hit", provider.id)
+                            continue
+                        key = (hit.channel, normalize_title_key(hit.title))
+                        if key not in seen:
+                            seen.add(key)
+                            results.append(hit)
+                except ChannelError as exc:
+                    failed = True
+                    logger.warning("Channel %s search failed (%s): %s", provider.id, alt, exc)
+                except Exception:
+                    failed = True
+                    logger.exception("Channel %s search crashed (%s)", provider.id, alt)
+            if succeeded:
+                self._mark_success(provider.id)
+            elif failed:
+                self._mark_failure(provider.id)
+
+        await asyncio.gather(*(_run(p) for p in self._providers.values()))
+        return results
+
+    async def detail(self, channel_id: str, detail_ref: str) -> ChannelDetail:
+        provider = self._require_healthy(channel_id)
+        if provider.external or not provider.supports_detail:
+            return ChannelDetail(channel=channel_id, title=detail_ref)
+        cache_key = response_cache.make_cache_key(
+            "channel.detail.v1",
+            channel=channel_id,
+            ref=detail_ref,
+        )
+        try:
+            payload = await response_cache.get_or_set_json(
+                cache_key=cache_key,
+                cache_group="channel.detail",
+                ttl_seconds=DETAIL_TTL_SECONDS,
+                producer=lambda p=provider, r=detail_ref: _detail_producer(p, r),
+            )
+            self._mark_success(channel_id)
+            return ChannelDetail.model_validate(payload)
+        except ChannelError:
+            self._mark_failure(channel_id)
+            raise
+
+    async def streams(self, channel_id: str, episode_ref: str) -> list[ChannelStream]:
+        provider = self._require_healthy(channel_id)
+        if provider.external or not provider.supports_streams:
+            return []
+        cache_key = f"channel.streams.v1:{channel_id}:{episode_ref}"
+        now = time.monotonic()
+        cached = self._stream_cache.get(cache_key)
+        if cached is not None and now - cached[0] < STREAM_TTL_SECONDS:
+            return [ChannelStream.model_validate(item) for item in cached[1]]
+        try:
+            streams = await provider.get_streams(episode_ref)
+            self._mark_success(channel_id)
+            self._stream_cache[cache_key] = (now, [s.model_dump(mode="json") for s in streams])
+            return streams
+        except ChannelError:
+            self._mark_failure(channel_id)
+            raise
+
+    def external_url(self, channel_id: str, detail_ref: str) -> str:
+        provider = self._providers.get(channel_id)
+        if provider is None:
+            return ""
+        return provider.external_url(detail_ref)
+
+    def _require_healthy(self, channel_id: str) -> ChannelProvider:
+        provider = self._providers.get(channel_id)
+        if provider is None:
+            raise LookupError(channel_id)
+        if not self.is_healthy(provider):
+            raise ChannelError(channel_id, "health", "channel is in cooldown", retryable=False)
+        return provider
+
+
+async def _search_producer(provider: ChannelProvider, keyword: str, page: int) -> list[dict]:
+    hits = await provider.search(keyword, page)
+    return [hit.model_dump(mode="json") for hit in hits]
+
+
+async def _detail_producer(provider: ChannelProvider, detail_ref: str) -> dict:
+    detail = await provider.get_detail(detail_ref)
+    return detail.model_dump(mode="json")
+
+
+#: Process-wide singleton used by the API layer.
+registry = ChannelRegistry()
+registry.register_all(
+    [
+        AgeChannel(),
+        LibvioChannel(),
+        ZzzfunChannel(),
+        BilibiliChannel(),
+    ]
+)
