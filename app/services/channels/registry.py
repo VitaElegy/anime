@@ -13,8 +13,10 @@ from collections.abc import Iterable
 from app.models import ChannelDetail, ChannelInfo, ChannelSearchResult, ChannelStream
 from app.services import response_cache
 from app.services.channels.age import AgeChannel
+from app.services.channels.anilibria import AnilibriaChannel
 from app.services.channels.base import ChannelError, ChannelProvider
 from app.services.channels.bilibili_channel import BilibiliChannel
+from app.services.channels.gogoanime import GogoanimeChannel
 from app.services.channels.libvio import LibvioChannel
 from app.services.channels.zzzfun import ZzzfunChannel
 from app.services.keyword_expand import expand_keywords, normalize_title_key
@@ -224,6 +226,8 @@ registry.register_all(
         AgeChannel(),
         LibvioChannel(),
         ZzzfunChannel(),
+        AnilibriaChannel(),
+        GogoanimeChannel(),
         BilibiliChannel(),
     ]
 )
