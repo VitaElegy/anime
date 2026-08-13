@@ -6,7 +6,7 @@ along the way so contributors don't re-litigate them.
 ## Current status
 
 - Core (search / download / library / watch party / accounts) is functional.
-- Backend tests: green (163 passed). Frontend tests: green (13 passed, kept
+- Backend tests: green (174 passed). Frontend tests: green (13 passed, kept
   green in CI). Hermetic E2E: green (7 passed / 1 live skipped, Playwright,
   docs/E2E_TESTING.md).
 - Deployment: bare-metal via systemd + Nginx; Docker Compose available for dev.
@@ -16,6 +16,11 @@ along the way so contributors don't re-litigate them.
 - Backup Resource Library v1 (2026-08-13): Kitsu provider (free metadata with
   zh_cn titles + official page link) registered as an external backup channel;
   role spec + candidate audit in docs/RESOURCE_BACKUP_PLAN.md.
+- Miruro playable HLS backup (2026-08-13): AniList search + Miruro pipe
+  episodes/streams (pewe -> hls.anidb.app), priority=58, curl_cffi documented
+  exception in docs/RESOURCE_BACKUP_PLAN.md §2.5.
+- CI e2e job fixed (2026-08-13): installs frontend deps before starting the
+  Vite webServer (`vite: not found` exit 127).
 
 ## Decisions
 
@@ -72,6 +77,10 @@ Reserved fields to enable:
 - [x] ~~AnimePahe~~ ruled out 2026-08-13: live domains are ad-walled (API 302 -> ch=1 -> advertiser landing page; even a real browser gets no JSON), the rest are Cloudflare-gated or domain-for-sale; reference impl dead — kept as record
 - [x] ~~ReAnime.to~~ confirmed dead 2026-08-13 (/api/search 404, SPA shell,
       Cloudflare challenge) — kept as a record in RESOURCE_BACKUP_PLAN §2
+- [x] Miruro v1: playable HLS backup — AniList search + pipe episodes/streams
+      (pewe -> hls.anidb.app, priority=58, verified 2026-08-13)
+- [x] ~~AnimeKai~~ closed 2026-05, anikai.to NXDOMAIN (re-verified 2026-08-13)
+      — kept as a record in RESOURCE_BACKUP_PLAN §2/§7
 - [ ] AniAPI after its JS challenge is removed (was 200, now JS-challenged)
 
 ### Engineering

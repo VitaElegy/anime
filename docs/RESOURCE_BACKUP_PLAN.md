@@ -77,6 +77,8 @@
 | **Jikan**（api.jikan.moe/v4） | 元数据 | ❌ 504（上游 MyAnimeList 拒绝） | 不可用，保留记录 |
 | **AnimePahe**（animepahe.tv / .net / .com / .ru / .si） | 可播（m3u8+Kwik） | ❌ 2026-08-13 全域名实测不可编程接入：`.com/.org`→`.pw` 403 CF；`.ru`→`.su` 域名出售页；`.si` NXDOMAIN；`.tv/.net` 存活但 API 302→`ch=1`→广告落地页（p-tracking/thefinancesgator），真实 Chrome 也不返回 JSON；`.me` 403 CF | **确认不可用**：站点已广告墙化，参考实现（`_reference/Animepahe-API`）失效，保留记录避免重复调研 |
 | **AllAnime**（api.mkissa.net/api） | 目录 + 官方外链（可升级为可播） | ✅ GraphQL 实测可用（2026-08-13，0.45s，主番 28 sub/28 dub） | **已落地 v1**（2026-08-13）：search + external，`priority=62`；完整流需 aaReq AES-GCM token + 混淆 bundle 密钥推导（P1，见 §2.4） |
+| **Miruro**（miruro.tv + AniList GraphQL） | 可播（AniDB HLS，绕 CF） | ✅ 全链路实测可播（2026-08-13，pewe→hls.anidb.app 1080/720/360，分片可播） | **P0 可播备选**：AniList 搜索 + `/api/secure/pipe` 集数/流，需 curl_cffi Chrome 指纹绕 CF（显式例外 §2.5）；已探明 `pewe` 稳定，`ally`（Animedao 上游）已死 |
+| **AnimeKai**（anikai.to） | 可播（enc-dec 解密） | ❌ 2026-05 关站，anikai.to NXDOMAIN（2026-08-13 复测） | **确认关站**：参考实现（`_reference/AnimeKAI-API`）依赖的 enc-dec.app 仍存活但已无站点可查，保留记录避免重复调研 |
 | **ReAnime.to** | 可播（flixcloud HLS AES-256） | ❌ 2026-08-13 实测 `/api/search` 404、搜索页 SPA 空壳 + Cloudflare challenge（`can_request:false`） | **确认失效**：参考实现（`_reference/ReAnime.to-API`，2026-06）已失效，保留记录避免重复调研 |
 | **HiAnime / Zoro** | 可播 | ❌ 走代理超时（000） | 不可用，保留记录 |
 | **Consumet 官方** | 聚合流 API | ❌ 官方不再直接提供（301/500） | 可参考其 provider 模式（GogoanimeProvider），不自建 |
@@ -177,6 +179,51 @@ mkissa），`allanime.to` / `allanime.day` 站点本机走代理超时，但 mki
   参考 GoAnime `internal/scraper/providers/allanime/`（keys.go / crypto.go /
   stream.go），前端混淆 + Turnstile，链路脆弱，收益低于 AnimeHeaven，留 P1。
 
+### 2.5 Miruro 接口速查（落地依据，2026-08-13 实测可播）
+
+Miruro（miruro.tv）是开源前端（VitaElegy 参考 walterwhite-69/Miruro-API v3.0，
+`~/work/Project/_reference/Miruro-API`），元数据走 AniList GraphQL，集数/流走自家
+`/api/secure/pipe`（Cloudflare 后）。实测 `pewe` provider 的 HLS 分片可播，
+是「实际观看」的第二可播兜底（在 AnimeHeaven 之后）。
+
+- 搜索：`POST https://graphql.anilist.co`（**直连可用，无需代理**）
+  - GraphQL：`Page(page, perPage){ media(search, type: ANIME, sort: SEARCH_MATCH){ id
+    title{ romaji english native } coverImage{ large extraLarge } format episodes
+    averageScore } }`
+  - 中文关键词 → `media: []`（无噪声，无需短路；registry 关键词扩展补英文/罗马音）
+  - `detail_ref` = AniList `id`（如 `154587`）
+- 集数：`GET https://www.miruro.tv/api/secure/pipe?e=<base64url(json)>`
+  - payload：`{"path":"episodes","method":"GET","query":{"anilistId":154587},"body":None,"version":"0.1.0"}`
+  - 响应：**gzip + base64url** 编码 JSON（先补 `=` padding → `urlsafe_b64decode` →
+    `gzip.decompress` → `json.loads`）
+  - 结构：`mappings`（malId/aniId/anidbId/kitsuId…）+ `providers`
+    （`ally/pewe/moo/bee/kiwi/hop/bonk`，每 provider 有 `episodes.sub/.dub[]`；
+    Frieren 实测 pewe 28 sub + 28 dub）
+  - episode `id` 是 base64url(上游 `provider:realId:number`)；pewe 首集解码为
+    `anidbapp:1663:3062`。**注意解码前缀是上游 provider（anidbapp），不是 Miruro
+    聚合 key（pewe）**——`episode_ref` 必须同时保留聚合 key、category 与 anilistId。
+- 流：`GET .../pipe?e=<base64url({"path":"sources","method":"GET","query":{...}})>`
+  - query：`{"episodeId": base64url(decoded_id), "provider": "pewe",
+    "category": "sub", "anilistId": 154587}`
+  - 返回 `streams[]`：`{url, type, server, referer, default, isActive}`
+  - 首选 `pewe`：HLS `https://hls.anidb.app/stream/<token>/master.m3u8`
+    （1080/720/360 三档，2026-08-13 实测 manifest 与 `.xls` 后缀分片为真实 MPEG-TS，
+    需 `Referer: https://anidb.app/`），另附 `type="embed"` 官方 embed 地址
+  - `ally`（Animedao 上游）2026-08-13 实测 444/502 upstream unreachable，不优先；
+    mp4upload 直链 403，不可用
+- **curl_cffi 显式例外条款**（本文件在此先声明，再实现）：Miruro 的
+  `/api/secure/pipe` 在 Cloudflare 后，共享 httpx 客户端（Chrome/126 指纹）返回
+  403；必须使用 `curl_cffi.AsyncSession(impersonate="chrome110")` + Clash 7892 代理
+  + 完整浏览器头（Referer/Origin/sec-fetch/sec-ch-ua）。这是
+  CHANNEL_ARCHITECTURE §1.1「Provider 不自建 HTTP 客户端」的**文档先声明例外**
+  （如同 AnimeHeaven 的 CDN 探测例外在文档先声明，再实现）。
+- **v1 落地范围（本次）**：`search` + `get_detail` + `get_streams`，
+  `external=False`、`language="en"`、`priority=58`（排在 AnimeHeaven 55 之后、
+  Kitsu 60 之前）。
+- `episode_ref` 内部约定：`{provider}:{category}:{anilist_id}:{decoded_id}`，
+  如 `pewe:sub:154587:anidbapp:1663:3062`（对前端不透明；`get_streams` 按
+  `split(":", 2)` 解析 provider/category，再取 `anilist_id` 与 decoded_id）。
+
 
 ## 3. 接口契约
 
@@ -248,6 +295,13 @@ class ChannelInfo(BaseModel):
 6. ~~ReAnime.to~~（已确认失效 2026-08-13）：`/api/search` 404 + SPA 空壳
    + Cloudflare challenge，参考实现已失效，保留记录不再投入。
 7. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。
+8. ~~MiruroChannel~~（已落地 2026-08-13）：可播 HLS 备选，`external=False`、
+   `priority=58`，AniList 搜索 + pipe 集数/流，curl_cffi 例外（§2.5 已先声明）。
+   `tests/test_miruro_channel.py` 11 例 fixture 测试。
+9. ~~AnimeKai~~（已确认关站 2026-05，2026-08-13 复测 anikai.to NXDOMAIN）：
+   参考实现（`_reference/AnimeKAI-API`）依赖的 enc-dec.app 仍存活但已无站点可查，
+   保留记录不再投入。
+
 
 ## 8. 移植声明
 

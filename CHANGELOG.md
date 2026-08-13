@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Miruro playable HLS backup channel (docs/RESOURCE_BACKUP_PLAN.md §2.5): AniList
+  GraphQL search + Miruro `/api/secure/pipe` episodes/streams (pewe ->
+  hls.anidb.app HLS, verified 2026-08-13), `priority=58`, curl_cffi Chrome TLS
+  fingerprint as the documented exception to the shared HTTP client; 11 fixture
+  tests (backend 163 -> 174).
 - Online watch channels: Anilibria (open JSON API + direct HLS, Chinese keyword
   expansion) and Gogoanime (HTML scraping + megaplay HLS) providers with real
   playback, registered in the channel registry (docs/CHANNEL_ARCHITECTURE.md).
@@ -51,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CI e2e job: install frontend dependencies before the Playwright webServer
+  starts Vite (was missing -> `vite: not found` exit 127, last 3 pushes red).
 - Chinese filename / query compatibility bugs in playback and search.
 - SSE state convergence for multi-viewer rooms (suppression + debounce).
 - `RuntimeError: read() called while another coroutine is already waiting`

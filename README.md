@@ -58,7 +58,7 @@ anime/
 │       ├── api/          # axios API 客户端
 │       └── lib/          # SSE 房间事件流、格式化工具
 ├── scripts/              # 真实环境 smoke 测试脚本（需运行中的后端）
-├── tests/                # pytest 后端单测（163 个用例）
+├── tests/                # pytest 后端单测（174 个用例）
 ├── docs/                 # 设计与协议文档（搜索 API / 同看协议 / 资源目录）
 ├── deploy/               # systemd / Nginx / Docker 部署示例
 ├── data/                 # 运行期数据（SQLite、封面、HLS 输出，已 gitignore）
@@ -142,7 +142,7 @@ make build         # 前端生产构建（tsc + vite build）
 
 | 检查项 | 命令 | 当前状态 |
 |---|---|---|
-| 后端单测 | `pytest tests/ -q` | 163 passed |
+| 后端单测 | `pytest tests/ -q` | 174 passed |
 | 后端 Lint | `ruff check app/ tests/` | ✅ |
 | 前端单测 | `npm test -- --run`（frontend/） | 13 passed |
 | 前端 Lint | `npm run lint`（frontend/） | ✅ |
