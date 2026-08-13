@@ -1,0 +1,15 @@
+{
+  "name": "anime-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:live": "ANIME_E2E_LIVE=1 playwright test tests/live-sources.spec.ts",
+    "serve:fixture": "node fixture-server.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}
