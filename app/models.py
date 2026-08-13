@@ -482,6 +482,9 @@ class ChannelInfo(BaseModel):
     language: str = "zh"
     description: str = ""
     external: bool = False  # True = official external link only (e.g. Bilibili)
+    #: sort order in the channel tab — smaller = earlier (main sources 0-50,
+    #: backup sources 60+). See docs/RESOURCE_BACKUP_PLAN.md §1.2.
+    priority: int = 100
 
 
 class ChannelSearchResult(BaseModel):

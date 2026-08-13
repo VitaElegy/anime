@@ -51,6 +51,8 @@ class ChannelProvider(abc.ABC):
     description: str = ""
     #: True = official external-link only channel (no get_streams)
     external: bool = False
+    #: tab sort order — smaller first; backup sources use 60+ (docs/RESOURCE_BACKUP_PLAN.md §1.2)
+    priority: int = 100
 
     @abc.abstractmethod
     async def search(self, keyword: str, page: int = 1) -> list[ChannelSearchResult]:
@@ -81,4 +83,5 @@ class ChannelProvider(abc.ABC):
             language=self.language,
             description=self.description,
             external=self.external,
+            priority=self.priority,
         )

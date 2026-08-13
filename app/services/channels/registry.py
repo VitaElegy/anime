@@ -18,6 +18,7 @@ from app.services.channels.anilibria import AnilibriaChannel
 from app.services.channels.base import ChannelError, ChannelProvider
 from app.services.channels.bilibili_channel import BilibiliChannel
 from app.services.channels.gogoanime import GogoanimeChannel
+from app.services.channels.kitsu import KitsuChannel
 from app.services.channels.libvio import LibvioChannel
 from app.services.channels.zzzfun import ZzzfunChannel
 from app.services.keyword_expand import expand_keywords, normalize_title_key
@@ -243,5 +244,6 @@ registry.register_all(
         AnilibriaChannel(),
         GogoanimeChannel(),
         BilibiliChannel(),
+        KitsuChannel(),
     ]
 )
