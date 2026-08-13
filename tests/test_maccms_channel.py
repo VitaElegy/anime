@@ -13,7 +13,15 @@ from unittest import mock
 
 from app.routers.watch import _host_allowed
 from app.services.channels.base import ChannelError
-from app.services.channels.maccms import IKunChannel, YinghuaChannel, Ziyuan360Channel
+from app.services.channels.maccms import (
+    BaofengChannel,
+    FeifanChannel,
+    IKunChannel,
+    JisuChannel,
+    SuboChannel,
+    YinghuaChannel,
+    Ziyuan360Channel,
+)
 from app.services.channels.registry import registry
 
 # Real 360zy search response for 葬送的芙莉莲 (trimmed).
@@ -36,6 +44,26 @@ SEARCH_360ZY = {
             "vod_year": "2023",
             "vod_content": "<p>中央大陆古老城邦，人们夹道欢呼，为击败了魔王的四人组高声喝彩。</p>",
         },
+    ],
+}
+
+# Real jisuzy detail response with dual play sources (jsyun player page +
+# jsm3u8 direct HLS), separated by $$$. The m3u8 source must win.
+DETAIL_JISUZY = {
+    "code": 1,
+    "list": [
+        {
+            "vod_id": 92376,
+            "vod_name": "葬送的芙莉莲第二季",
+            "vod_play_from": "jsyun$$$jsm3u8",
+            "vod_play_url": (
+                "第1集$https://vv.jisuzyv.com/play/av223w5a#"
+                "第2集$https://vv.jisuzyv.com/play/bYEEj3Mb"
+                "$$$"
+                "第1集$https://vv.jisuzyv.com/play/av223w5a/index.m3u8#"
+                "第2集$https://vv.jisuzyv.com/play/bYEEj3Mb/index.m3u8"
+            ),
+        }
     ],
 }
 
@@ -151,6 +179,45 @@ class MaccmsChannelTest(unittest.TestCase):
             detail = asyncio.run(self.channel.get_detail("1"))
         self.assertEqual(detail.groups, [])
 
+    def test_get_detail_multi_source_prefers_direct_m3u8(self) -> None:
+        import asyncio
+
+        resp = mock.Mock()
+        resp.json.return_value = DETAIL_JISUZY
+
+        with mock.patch(
+            "app.services.channels.maccms.http.request",
+            new=mock.AsyncMock(return_value=resp),
+        ):
+            detail = asyncio.run(JisuChannel().get_detail("92376"))
+
+        # Player-page source (jsyun) is dropped; only the m3u8 source remains.
+        self.assertEqual(len(detail.groups), 1)
+        group = detail.groups[0]
+        self.assertEqual(group.title, "线路")
+        self.assertEqual(len(group.episodes), 2)
+        for episode in group.episodes:
+            # Only direct m3u8 URLs survive; the player-page form
+            # (https://vv.jisuzyv.com/play/<id> with no extension) is dropped.
+            self.assertTrue(episode.episode_ref.endswith(".m3u8"))
+            self.assertTrue(episode.episode_ref.endswith("/index.m3u8"))
+
+    def test_search_passes_api_from_hint(self) -> None:
+        import asyncio
+
+        resp = mock.Mock()
+        resp.json.return_value = SEARCH_360ZY
+
+        with mock.patch(
+            "app.services.channels.maccms.http.request",
+            new=mock.AsyncMock(return_value=resp),
+        ) as req:
+            asyncio.run(JisuChannel().search("葬送的芙莉莲"))
+
+        for call in req.call_args_list:
+            url = call.args[3]  # request(channel, stage, method, url, ...)
+            self.assertIn("from=jsm3u8", url)
+
     def test_get_streams_hls(self) -> None:
         import asyncio
 
@@ -181,6 +248,13 @@ class MaccmsWhitelistTest(unittest.TestCase):
             "vod12.wgslsw.com",
             "ts1.yhzybf.com",
             "yhzybf.com",
+            "vv.jisuzyv.com",
+            "p.jisuts.com",
+            "play.xluuss.com",
+            "g.xlzyd.com",
+            "c1.rrcdnbf5.com",
+            "v.baofeng9.com",
+            "vip.ffzy-plays.com",
         ):
             self.assertTrue(_host_allowed(f"https://{host}/x/index.m3u8"), host)
 
@@ -191,7 +265,7 @@ class MaccmsWhitelistTest(unittest.TestCase):
 class MaccmsRegistryTest(unittest.TestCase):
     def test_channels_registered(self) -> None:
         infos = {info.id: info for info in registry.list_channels()}
-        for cid in ("360zy", "ikunzy", "yhzy"):
+        for cid in ("360zy", "ikunzy", "yhzy", "jisuzy", "subozy", "bfzyapi", "ffzy"):
             self.assertIn(cid, infos)
             info = infos[cid]
             self.assertTrue(info.enabled)
@@ -205,6 +279,13 @@ class MaccmsRegistryTest(unittest.TestCase):
         self.assertEqual(Ziyuan360Channel().language, "zh")
         self.assertEqual(IKunChannel().domains, ("ikunzyapi.com", "ikunzy.com", "ikunzy.net", "ikunzy.org", "ikunzy.vip"))
         self.assertEqual(YinghuaChannel().domains, ("yhzy.cc",))
+        self.assertEqual(JisuChannel().domains, ("jszyapi.com", "jisuzy.com"))
+        self.assertEqual(JisuChannel().api_from, "jsm3u8")
+        self.assertEqual(SuboChannel().api_from, "subm3u8")
+        self.assertEqual(SuboChannel().domains, ("subocaiji.com", "subozy.com", "suboziyuan.com", "suboziyuan.net"))
+        self.assertEqual(BaofengChannel().domains, ("bfzyapi.com",))
+        self.assertEqual(FeifanChannel().domains, ("ffzy.tv", "ffzy1.tv", "ffzy2.tv", "ffzy3.tv", "ffzy4.tv", "ffzy5.tv"))
+        self.assertEqual(FeifanChannel().api_from, "ffm3u8")
 
 
 if __name__ == "__main__":

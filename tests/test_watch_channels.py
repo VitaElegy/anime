@@ -1022,5 +1022,76 @@ class DailymotionProxyTests(unittest.TestCase):
         curl_cffi.assert_not_called()
 
 
+class MaccmsChromeFpProxyTests(unittest.TestCase):
+    """Maccms CDNs that reject the shared httpx client must route through
+    curl_cffi chrome124 (docs §2.8: rrcdnbf5 / baofeng9 / ffzy-plays 403/404
+    plain TLS, 200 with chrome124), while direct-HLS Maccms CDNs
+    (jisuzyv / xluuss / maowushi) keep using the shared httpx client.
+    """
+
+    class FakeCurlSession:
+        instances: list[MaccmsChromeFpProxyTests.FakeCurlSession] = []
+
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            type(self).instances.append(self)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url):
+            self.url = url
+            master = (
+                "#EXTM3U\n#EXT-X-TARGETDURATION:11\n#EXTINF:8.215,\n"
+                "0000000.ts\n#EXTINF:8.799,\n0000001.ts\n"
+            )
+            return FakeResponse(text=master, status_code=200, headers={"content-type": "application/vnd.apple.mpegurl"})
+
+    def test_maccms_chrome_fp_master_through_curl_cffi(self):
+        client = TestClient(app)
+        with mock.patch("app.routers.watch.CurlAsyncSession", self.FakeCurlSession):
+            resp = client.get(
+                "/api/watch/proxy/stream",
+                params={
+                    "url": "https://c1.rrcdnbf5.com/video/zangsongdefulilian/%E7%AC%AC01%E9%9B%86/index.m3u8",
+                    "referer": "https://bfzyapi.com/",
+                },
+            )
+        client.close()
+        self.assertEqual(resp.status_code, 200)
+        session = self.FakeCurlSession.instances[-1]
+        # Chrome fingerprint + caller's channel Referer (no DM Origin).
+        self.assertEqual(session.kwargs["impersonate"], "chrome124")
+        self.assertEqual(session.kwargs["timeout"], 20.0)
+        self.assertEqual(session.kwargs["headers"]["Referer"], "https://bfzyapi.com/")
+        self.assertNotIn("Origin", session.kwargs["headers"])
+        self.assertEqual(session.url, "https://c1.rrcdnbf5.com/video/zangsongdefulilian/%E7%AC%AC01%E9%9B%86/index.m3u8")
+        # Segments are rewritten to the same-origin stream proxy.
+        self.assertIn("/api/watch/proxy/stream?url=https%3A%2F%2Fc1.rrcdnbf5.com%2Fvideo%2Fzangsongdefulilian%2F", resp.text)
+        self.assertIn("0000000.ts", resp.text)
+
+    def test_non_chrome_fp_maccms_cdn_uses_httpx(self):
+        class FakeClient:
+            async def get(self, url, headers=None, timeout=None):
+                self.url = url
+                return FakeResponse(text="seg", status_code=200, headers={"content-type": "video/mp2t"})
+
+        fake_client = FakeClient()
+        curl_cffi = mock.Mock()
+        with mock.patch("app.services.channels.http.get_client", return_value=fake_client), mock.patch("app.routers.watch.CurlAsyncSession", curl_cffi):
+            client = TestClient(app)
+            resp = client.get(
+                "/api/watch/proxy/stream",
+                params={"url": "https://vv.jisuzyv.com/play/av223w5a/index.m3u8", "referer": "https://jisuzy.com/"},
+            )
+            client.close()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(fake_client.url, "https://vv.jisuzyv.com/play/av223w5a/index.m3u8")
+        curl_cffi.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
