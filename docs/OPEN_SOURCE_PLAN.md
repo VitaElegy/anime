@@ -9,9 +9,9 @@
 |---|---|
 | 技术栈 | FastAPI + SQLite / React 19 + Vite + TS + Tailwind |
 | 功能 | 搜索（中文化、4 源聚合）、qBittorrent 下载、HLS ABR 转码、同看（SSE + 好友/私信/邀请）、账号体系、日历/收藏/爬取 |
-| 后端测试 | 77 passed（临时 venv 实测） |
-| 前端测试 | 1/9 passed（EventSource 未 mock、测试与重构后 UI 脱节） |
-| Git | 本地 75 个未提交变更（37 M + 38 ??），本地领先远程 3 提交 |
+| 后端测试 | 128 passed（.venv-test 实测） |
+| 前端测试 | 13/13 passed（4 个测试文件，vitest） |
+| Git | 工作区干净，本地与远程 master 同步（2026-08-13） |
 | 远程分支 | `master` + `feature/watch-party`（12 提交未合入，与本地实现重复） |
 | 仓库可见性 | PRIVATE |
 
@@ -45,12 +45,12 @@
 | # | 问题 | 证据 | 整改方案 |
 |---|---|---|---|
 | 14 | 远程 `feature/watch-party` 12 提交未合入，与本地实现重复 | `git log master..origin/feature/watch-party` | 明确决策：以本地实现为准，记录到 ROADMAP；评估 cherry-pick aria2/语音 |
-| 15 | WatchParty 邀请功能：后端 + 处理器齐全，但重构后 UI 缺失 | `incoming_room_invitations` 无渲染 | 补回「收到的邀请」UI，同步测试 |
+| 15 | WatchParty 邀请功能 UI | `incoming_room_invitations` 无渲染 | ✅ 已实现（WatchPartyPage 收到邀请卡片 + 接受/忽略，有测试） |
 | 16 | 同步协议 v1 预留字段未启用 | docs/WATCH_SYNC_PROTOCOL.md §8 | 列入 ROADMAP（captions/audio_track/buffering/presence） |
-| 17 | 同看权限/心跳/RTT 补偿未做 | MULTIVIEWER_SYNC_REPORT.md §8 | 列入 ROADMAP |
+| 17 | 同看权限/心跳 | MULTIVIEWER_SYNC_REPORT.md §8 | ✅ 房主权限+心跳已实现；RTT 补偿仍待办（ROADMAP） |
 | 18 | 转码为整片 VOD 模式、GPU 并行受限 | HIGH_RESOLUTION_PLAYBACK_REPORT.md §6 | 列入 ROADMAP（on-demand/直通检测/并行） |
 | 19 | 资源站集成：Comicat/DMHY/AnimeTosho 只在远程分支有 | RESOURCE_DIRECTORY.md §9 | 评估移植到本地 4 源聚合 |
-| 20 | 文档与实际不一致（AnimeGarden 已实现但文档仍写「下一步」） | docs/RESOURCE_DIRECTORY.md §9 | 更新文档 |
+| 20 | 文档与实际不一致（AnimeGarden 已实现但文档仍写「下一步」） | docs/RESOURCE_DIRECTORY.md §9 | ✅ 已更新 |
 
 ### P3 — 安全与合规
 
@@ -61,6 +61,11 @@
 | 23 | 生产配置守卫已存在但未文档化 | 在 README/DEPLOY 明确 |
 
 ## 三、整改路线（执行顺序）
+
+> 2026-08-13 进度：P0 已全清（仓库卫生/元数据/CI/前端测试/venv）；P1 已落地
+> （pyproject/Makefile/docker-compose/README 重写）；P2 中邀请 UI、房主权限、
+> 心跳、AnimeGarden 文档同步已完成，另新增在线渠道 P0 修复（Bangumi 快速失败、
+> 离线关键词扩展）与备选资源库 v1（Kitsu，见 docs/RESOURCE_BACKUP_PLAN.md）。
 
 1. **P0 全清**：仓库卫生 → 开源元数据 → CI → 前端测试 → venv 清理
 2. **P1 工程化**：pyproject/Makefile/docker-compose/README

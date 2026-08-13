@@ -6,8 +6,15 @@ along the way so contributors don't re-litigate them.
 ## Current status
 
 - Core (search / download / library / watch party / accounts) is functional.
-- Backend tests: green. Frontend tests: green (kept green in CI).
+- Backend tests: green (128 passed). Frontend tests: green (13 passed, kept
+  green in CI).
 - Deployment: bare-metal via systemd + Nginx; Docker Compose available for dev.
+- Search fast-fail (2026-08-13): Bangumi unreachable no longer stalls first
+  searches (~60s → ≤3s with negative cache + circuit breaker); channel keyword
+  expansion keeps instant offline title-map hits.
+- Backup Resource Library v1 (2026-08-13): Kitsu provider (free metadata with
+  zh_cn titles + official page link) registered as an external backup channel;
+  role spec + candidate audit in docs/RESOURCE_BACKUP_PLAN.md.
 
 ## Decisions
 
@@ -35,9 +42,12 @@ Reserved fields to enable:
 
 ### Watch-room UX hardening (`docs/MULTIVIEWER_SYNC_REPORT.md` §8)
 
-- [ ] Role-based permissions: only the host may send control commands
+- [x] Role-based permissions: only the host may send control commands
+      (implemented 2026-08 — `WatchRoomPage.isOwner` gate + non-owner
+      heartbeat `requireReady`; covered by frontend tests)
 - [ ] RTT compensation for more accurate seeks over WAN
-- [ ] Heartbeat & explicit SSE re-subscribe after disconnect
+- [x] Heartbeat & explicit SSE re-subscribe after disconnect (implemented
+      2026-08 — presence heartbeat + room re-entry confirmation)
 
 ### Playback & transcoding (`docs/HIGH_RESOLUTION_PLAYBACK_REPORT.md` §6)
 
@@ -50,6 +60,14 @@ Reserved fields to enable:
 - [ ] `/api/live-tv` endpoint from public IPTV playlists (watch parties for live TV)
 - [ ] PreDB metadata for "newly released" signals
 - [ ] Evaluate Comicat / DMHY / AnimeTosho ports from `feature/watch-party`
+
+### Backup resource library (`docs/RESOURCE_BACKUP_PLAN.md`)
+
+- [x] Kitsu v1: search (zh_cn titles) + external official link (priority=60)
+- [ ] Shikimori metadata-only backup (search/detail, English/Russian)
+- [ ] AnimePahe playable source (cloudscraper CF bypass, ref Animepahe-API)
+- [ ] ReAnime.to playable source (flixcloud HLS AES-256, ref ReAnime.to-API)
+- [ ] AniAPI after its JS challenge is removed (was 200, now JS-challenged)
 
 ### Engineering
 

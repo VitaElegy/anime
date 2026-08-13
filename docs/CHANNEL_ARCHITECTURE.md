@@ -3,6 +3,8 @@
 > 状态：v1.0 生效稿 · 2026-08-13
 > 本文件是「在线观看渠道」功能的**唯一实现依据**。任何代码改动必须先满足本文定义的
 > 角色边界与接口契约；若需调整契约，先改本文并注明原因。
+> 备选资源库（Backup Resource Library）是本文的扩展角色，规范见
+> [RESOURCE_BACKUP_PLAN.md](./RESOURCE_BACKUP_PLAN.md)。
 
 ## 0. 目标与用户旅程
 
@@ -52,6 +54,8 @@
 
 **约定**：
 - 每个 Provider 用 `id` 唯一标识（如 `age` / `libvio` / `zzzfun` / `bilibili`）
+- 每个 Provider 有 `priority`（数字越小越靠前）：主力渠道 0-50，备选渠道 60+
+  （见 docs/RESOURCE_BACKUP_PLAN.md §1.2）
 - 所有外部请求必须设置 `User-Agent`（可配）与必要 `Referer`
 - 解析失败必须抛 `ChannelError`（带 `channel` / `stage`），由 Registry 统一降级
 - Provider 内部**不得**自行做长时间重试；超时由公共 HTTP 客户端控制（默认 8s）
@@ -138,6 +142,7 @@
 | `anilibria` | Anilibria | 在线播放（开放 JSON API） | 官方 `api/v1`，`cache.libria.fun` 直连 HLS | 实现（2026-08 实测可播） |
 | `gogoanime` | Gogoanime | 在线播放（HTML + megaplay HLS） | 独立实现，`getSourcesNew` 无广告 | 实现（2026-08 实测可播） |
 | `bilibili` | Bilibili 番剧 | 元数据+官方外链（不代理播放） | 现有 `app/services/bilibili.py` | 实现 |
+| `kitsu` | Kitsu（备选库） | 元数据+官方外链（中文标题兜底） | 官方 API，`kitsu.io/api/edge` | 实现（2026-08-13 实测可用，priority=60） |
 
 > 渠道可用性会漂移：2026-08-13 实测 AGE/Libvio/Zzzfun 全部不可用（已 `enabled=False`
 > 禁用，避免每次聚合搜索都等它们的超时；恢复后移除 `enabled=False` 即可），Anilibria 与
