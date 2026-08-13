@@ -39,6 +39,9 @@ class LibvioChannel(ChannelProvider):
     language = "zh"
     description = "在线影视站（HTML + 签名 HLS）"
 
+    # 实测不可用（2026-08-13 403/超时），禁用避免拖慢聚合搜索；恢复后移除本行即可。
+    enabled = False
+
     @staticmethod
     def _sign_url(url: str) -> str:
         """Compute the short-lived sign query (see Anime-API libvio.py)."""

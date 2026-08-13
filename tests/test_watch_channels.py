@@ -9,6 +9,7 @@ Coverage:
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -429,6 +430,53 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(FlakyProvider, "search", side_effect=AssertionError("must not be called")):
             hits = await reg.search("测试")
         self.assertEqual(len(hits), 1)
+
+    async def test_aggregation_skips_disabled_providers(self):
+        class DisabledProvider(ChannelProvider):
+            id = "disabled"
+            name = "Disabled"
+            enabled = False
+
+            async def search(self, keyword, page=1):
+                raise AssertionError("disabled provider must not be called")
+
+        class OkProvider(ChannelProvider):
+            id = "ok"
+            name = "OK"
+
+            async def search(self, keyword, page=1):
+                return [ChannelSearchResult(channel=self.id, title=keyword, detail_ref="r1")]
+
+        reg = ChannelRegistry()
+        reg.register_all([OkProvider(), DisabledProvider()])
+        hits = await reg.search("测试")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].channel, "ok")
+        infos = {c.id: c for c in reg.list_channels()}
+        self.assertFalse(infos["disabled"].healthy)
+        self.assertTrue(infos["ok"].healthy)
+
+    async def test_aggregation_timeout_keeps_healthy_results(self):
+        class SlowProvider(ChannelProvider):
+            id = "slow"
+            name = "Slow"
+
+            async def search(self, keyword, page=1):
+                await asyncio.sleep(0.3)
+                return [ChannelSearchResult(channel=self.id, title="slow", detail_ref="r1")]
+
+        class FastProvider(ChannelProvider):
+            id = "fast"
+            name = "Fast"
+
+            async def search(self, keyword, page=1):
+                return [ChannelSearchResult(channel=self.id, title="fast", detail_ref="r1")]
+
+        reg = ChannelRegistry()
+        reg.register_all([FastProvider(), SlowProvider()])
+        with mock.patch("app.services.channels.registry.SEARCH_AGGREGATE_TIMEOUT_SECONDS", 0.05):
+            hits = await reg.search("测试")
+        self.assertEqual([h.channel for h in hits], ["fast"])
 
     async def test_detail_and_streams_raise_on_unknown_channel(self):
         reg = ChannelRegistry()

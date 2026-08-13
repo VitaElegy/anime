@@ -128,15 +128,17 @@
 
 | id | 名称 | 类型 | 实现来源 | 状态 |
 |---|---|---|---|---|
-| `age` | AGE动漫 | 在线播放（JSON API） | Miru `agedm.org.js` 套路，`api.agedm.org/v2` | 实现（2026-08 实测 TLS 阻断） |
-| `libvio` | Libvio 在线 | 在线播放（HTML+签名） | Anime-API `libvio.py`（MIT，移植+署名） | 实现（2026-08 实测 403/超时） |
-| `zzzfun` | Zzzfun | 在线播放（App API） | Anime-API `zzzfun.py`（MIT，移植+署名） | 实现（2026-08 实测域名失效） |
+| `age` | AGE动漫 | 在线播放（JSON API） | Miru `agedm.org.js` 套路，`api.agedm.org/v2` | 实现（2026-08 实测 TLS 阻断，**已禁用待恢复**） |
+| `libvio` | Libvio 在线 | 在线播放（HTML+签名） | Anime-API `libvio.py`（MIT，移植+署名） | 实现（2026-08 实测 403/超时，**已禁用待恢复**） |
+| `zzzfun` | Zzzfun | 在线播放（App API） | Anime-API `zzzfun.py`（MIT，移植+署名） | 实现（2026-08 实测域名失效，**已禁用待恢复**） |
 | `anilibria` | Anilibria | 在线播放（开放 JSON API） | 官方 `api/v1`，`cache.libria.fun` 直连 HLS | 实现（2026-08 实测可播） |
 | `gogoanime` | Gogoanime | 在线播放（HTML + megaplay HLS） | 独立实现，`getSourcesNew` 无广告 | 实现（2026-08 实测可播） |
 | `bilibili` | Bilibili 番剧 | 元数据+官方外链（不代理播放） | 现有 `app/services/bilibili.py` | 实现 |
 
-> 渠道可用性会漂移：2026-08-13 实测 AGE/Libvio/Zzzfun 全部不可用，Anilibria 与
-> Gogoanime 为当时验证过的可用备选。新源候选：`yhdm`（樱花动漫，需移植 AES 解密）、
+> 渠道可用性会漂移：2026-08-13 实测 AGE/Libvio/Zzzfun 全部不可用（已 `enabled=False`
+> 禁用，避免每次聚合搜索都等它们的超时；恢复后移除 `enabled=False` 即可），Anilibria 与
+> Gogoanime 为当时验证过的可用备选。聚合搜索整体有 8s 硬超时（§6.1），即使有渠道挂起，
+> 用户也能在预算内拿到健康渠道的结果。新源候选：`yhdm`（樱花动漫，需移植 AES 解密）、
 > `hianime`（英文源）、`animepahe`（参考 Animepahe-API，需 TLS fingerprint）。
 > 增渠道 = 新增一个 Provider 文件 + 注册一行 + 白名单加域名，前端无需改动。
 
@@ -226,6 +228,7 @@ Renderer：hls.js → <video>；卸载时销毁实例释放内存
 ## 6. 健壮性与降级
 
 1. 单渠道超时/失败 → 聚合搜索返回其它渠道结果，前端显示「该渠道暂时不可用」
+   （聚合整体 8s 硬超时，挂起渠道的结果会被丢弃，健康渠道照常返回）
 2. 渠道熔断（连续 3 次失败冷却 120s）→ 自动跳过，恢复后自动放行
 3. 播放流失效（过期/防盗链）→ Renderer 捕获 hls 错误 → 自动尝试同集其它流 →
    仍失败则提示「该线路失效，请换渠道」

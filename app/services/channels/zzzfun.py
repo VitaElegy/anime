@@ -35,6 +35,9 @@ class ZzzfunChannel(ChannelProvider):
     language = "zh"
     description = "在线动漫（App 接口，播放地址访问后可能失效）"
 
+    # 实测不可用（2026-08-13 域名失效），禁用避免拖慢聚合搜索；恢复后移除本行即可。
+    enabled = False
+
     async def search(self, keyword: str, page: int = 1) -> list[ChannelSearchResult]:
         resp = await http.request(
             self.id,

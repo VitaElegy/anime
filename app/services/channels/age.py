@@ -37,6 +37,9 @@ class AgeChannel(ChannelProvider):
     language = "zh"
     description = "在线动漫站 JSON API"
 
+    # 实测不可用（2026-08-13 TLS 阻断），禁用避免拖慢聚合搜索；恢复后移除本行即可。
+    enabled = False
+
     async def search(self, keyword: str, page: int = 1) -> list[ChannelSearchResult]:
         resp = await http.request(
             self.id,

@@ -6,6 +6,7 @@ See docs/CHANNEL_ARCHITECTURE.md §1.8.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections.abc import Iterable
@@ -28,6 +29,7 @@ COOLDOWN_SECONDS = 120
 
 # Cache TTLs from docs/CHANNEL_ARCHITECTURE.md §1.7.
 SEARCH_TTL_SECONDS = 300
+SEARCH_AGGREGATE_TIMEOUT_SECONDS = 8.0
 DETAIL_TTL_SECONDS = 600
 STREAM_TTL_SECONDS = 120
 
@@ -151,7 +153,15 @@ class ChannelRegistry:
             elif failed:
                 self._mark_failure(provider.id)
 
-        await asyncio.gather(*(_run(p) for p in self._providers.values()))
+        tasks = [asyncio.create_task(_run(p)) for p in self._providers.values()]
+        done, pending = await asyncio.wait(tasks, timeout=SEARCH_AGGREGATE_TIMEOUT_SECONDS)
+        for task in pending:
+            task.cancel()
+        # _run swallows its own exceptions, but drain done tasks anyway so a
+        # stray exception can never surface as "Task exception was never retrieved".
+        for task in done:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                task.exception()
         return results
 
     async def detail(self, channel_id: str, detail_ref: str) -> ChannelDetail:
