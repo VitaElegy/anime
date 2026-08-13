@@ -175,7 +175,7 @@ class GogoanimeChannel(ChannelProvider):
             streams.append(self._make_stream(primary, f"Gogoanime（线路{self._server_label(primary, 'A')}）"))
         fallback = await self._fetch_sources(did, mega_url, new=False)
         if fallback and fallback.get("file") != primary.get("file"):
-            streams.append(self._make_stream(fallback, "Gogoanime 备用（含广告段，代理已过滤）"))
+            streams.append(self._make_stream(fallback, "Gogoanime 备用（混淆分片由代理剥离）"))
         if not streams:
             raise ChannelError(self.id, "streams", "no playable source", retryable=False)
         return streams

@@ -107,8 +107,9 @@
 - 转发时自动带上该渠道要求的 `Referer` / `User-Agent` / 其它自定义 headers
 - 支持 HTTP Range（分片播放必需）；返回正确的 Content-Type（`application/vnd.apple.mpegurl` / `video/mp2t`）
 - 只允许代理 `http(s)` 且带 `host` 白名单（防 SSRF：仅放行渠道注册表中的域名前缀）
-- 对已知会掺广告段的镜像（megaplay 系）做 HLS 清单实时过滤：丢弃 `tiktokcdn` 等
-  广告 EXTINF+URI 对，保证 hls.js 只收到纯视频分片
+- 对 megaplay 系镜像做 HLS 清单实时重写：相对 URI 解析为绝对并统一改写成同源
+  代理 URL；对混淆分片（`tiktokcdn` 等 PNG 壳，前缀 252B）剥离壳层，保证
+  hls.js 只收到纯 MPEG-TS
 
 **不负责**：解析、转码、缓存分片（m3u8 清单可短 TTL 缓存，分片不缓存）。
 
