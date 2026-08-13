@@ -44,6 +44,11 @@ _ALLOWED_STREAM_HOSTS = (
     "animeheaven.me",
     # Miruro AniDBApp HLS CDN (hls.anidb.app covered by the suffix match)
     "anidb.app",
+    # AnimeXin -> Dailymotion HLS (master cdndirector.dailymotion.com +
+    # sub-lists/segments under vod*.cf.dmcdn.net; suffix match covers both)
+    "dailymotion.com",
+    "dmcdn.net",
+    "cf.dmcdn.net",
     # Gogoanime / megaplay chain
     "gogoanime.is",
     "gogoanime.me.uk",

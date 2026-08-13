@@ -44,10 +44,14 @@ async def request(
     params: dict | None = None,
     data: dict | None = None,
     json_body: dict | None = None,
+    timeout: float | None = None,
 ) -> httpx.Response:
     """Perform one external request and raise ChannelError on transport/HTTP errors.
 
     Pass either ``data`` (form-encoded) or ``json_body`` (JSON-encoded) — never both.
+    ``timeout`` overrides the shared 8s client timeout for this single request
+    (httpx per-request option; the client stays shared). Documented exceptions:
+    AnimeXin detail/stream pages need 20s (docs/RESOURCE_BACKUP_PLAN.md §2.6).
     """
     try:
         resp = await get_client().request(
@@ -57,6 +61,7 @@ async def request(
             params=params,
             data=data,
             json=json_body,
+            timeout=timeout,
         )
         resp.raise_for_status()
         return resp

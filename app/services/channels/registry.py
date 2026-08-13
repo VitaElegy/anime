@@ -18,6 +18,7 @@ from app.services.channels.age import AgeChannel
 from app.services.channels.allanime import AllAnimeChannel
 from app.services.channels.anilibria import AnilibriaChannel
 from app.services.channels.animeheaven import AnimeHeavenChannel
+from app.services.channels.animexin import AnimeXinChannel
 from app.services.channels.base import ChannelError, ChannelProvider
 from app.services.channels.bilibili_channel import BilibiliChannel
 from app.services.channels.fixture import FixtureChannel
@@ -281,6 +282,7 @@ else:
             BilibiliChannel(),
             KitsuChannel(),
             MiruroChannel(),
+            AnimeXinChannel(),
             AllAnimeChannel(),
             ShikimoriChannel(),
         ]
