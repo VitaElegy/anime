@@ -24,6 +24,7 @@ from app.services.channels.fixture import FixtureChannel
 from app.services.channels.gogoanime import GogoanimeChannel
 from app.services.channels.kitsu import KitsuChannel
 from app.services.channels.libvio import LibvioChannel
+from app.services.channels.miruro import MiruroChannel
 from app.services.channels.shikimori import ShikimoriChannel
 from app.services.channels.zzzfun import ZzzfunChannel
 from app.services.keyword_expand import expand_keywords, normalize_title_key
@@ -279,6 +280,7 @@ else:
             GogoanimeChannel(),
             BilibiliChannel(),
             KitsuChannel(),
+            MiruroChannel(),
             AllAnimeChannel(),
             ShikimoriChannel(),
         ]

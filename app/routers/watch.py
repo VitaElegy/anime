@@ -42,6 +42,8 @@ _ALLOWED_STREAM_HOSTS = (
     "cache.libria.fun",
     # AnimeHeaven direct mp4 CDN (ct./ck. subdomains covered by the suffix match)
     "animeheaven.me",
+    # Miruro AniDBApp HLS CDN (hls.anidb.app covered by the suffix match)
+    "anidb.app",
     # Gogoanime / megaplay chain
     "gogoanime.is",
     "gogoanime.me.uk",
