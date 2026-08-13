@@ -79,7 +79,7 @@
 | **AllAnime**（api.mkissa.net/api） | 目录 + 官方外链（可升级为可播） | ✅ GraphQL 实测可用（2026-08-13，0.45s，主番 28 sub/28 dub） | **已落地 v1**（2026-08-13）：search + external，`priority=62`；完整流需 aaReq AES-GCM token + 混淆 bundle 密钥推导（P1，见 §2.4） |
 | **Miruro**（miruro.tv + AniList GraphQL） | 可播（AniDB HLS，绕 CF） | ✅ 全链路实测可播（2026-08-13，pewe→hls.anidb.app 1080/720/360，分片可播） | **P0 可播备选**：AniList 搜索 + `/api/secure/pipe` 集数/流，需 curl_cffi Chrome 指纹绕 CF（显式例外 §2.5）；已探明 `pewe` 稳定，`ally`（Animedao 上游）已死 |
 | **AnimeKai**（anikai.to） | 可播（enc-dec 解密） | ❌ 2026-05 关站，anikai.to NXDOMAIN（2026-08-13 复测） | **确认关站**：参考实现（`_reference/AnimeKAI-API`）依赖的 enc-dec.app 仍存活但已无站点可查，保留记录避免重复调研 |
-| **ReAnime.to** | 可播（flixcloud HLS AES-256） | ❌ 2026-08-13 实测 `/api/search` 404、搜索页 SPA 空壳 + Cloudflare challenge（`can_request:false`） | **确认失效**：参考实现（`_reference/ReAnime.to-API`，2026-06）已失效，保留记录避免重复调研 |
+| **ReAnime.to** | 可播（flixcloud HLS AES-256） | ⚠️ 搜索/元数据开放（`/api/v1/search`、`/api/v1/anime/{id}`、`/api/v1/watch/{id}` 均 200）；`/api/v1/episodes` 401（需站点 JS auth） | **已落地 P2**（2026-08-13）：`search` + `external_url`（`https://reanime.to/watch/{id}` 玩家页），`external=True`，`priority=70`；流播放等 auth 破解后再升级（§2.9 / roadmap 6） |
 | **HiAnime / Zoro 家族**（hianime.to / hianimez.to / aniwatchtv.to / hianime.sx / hianime.watch / hianime.mx / hianime.bz） | 可播 | ❌ 2026-08-13 全家族复测确认失效：hianime.to 直连超时、hianime.sx 为 ParkLogic 停靠页（permissions-policy 含 `*.parklogic.com`）、aniwatchtv.to 000、hianimez.to 301→hianime.to、hianime.watch 为 459KB SEO 壳站（ajax/search 404）、hianime.mx 为 WordPress 下载站、hianime.bz 000 | **确认失效**：参考 aniwatch-api（ghoshRitesh12）已无可用上游，保留记录避免重复调研；同类可播需求由 Anikoto（§2.7）承接 |
 | **Consumet 官方** | 聚合流 API | ❌ 官方不再直接提供（301/500） | 可参考其 provider 模式（GogoanimeProvider），不自建 |
 | **Nyaa / Mikan / AnimeGarden / SubsPlease** | BT 聚合 | ✅ 已接入现有四源 | 属于下载/聚合，不是在线渠道，不重复实现 |
@@ -446,8 +446,10 @@ Miru 扩展仓库（MIT）：
 | animeheaven.eu / anime1.me / kitsu.io / anilist.co / nyaa.si / mikanani.me / share.dmhy.org / animetosho.org / animeschedule.net | 200 无挑战 | 可用（AnimeHeaven/Kitsu 已落地） |
 
 结论：**2026-08 存量主力是 Maccms 家族（中文直链）+ AnimeHeaven/Anikoto/
-AnimeXin/Miruro/AllAnime（已落地）**；ReAnime 值得在 P2 阶段接 search+外链，
-anime1.me 作为合法源 P2 候选；AniAPI 与 gogoanime 类需挑战求解器，暂不投入。
+AnimeXin/Miruro/AllAnime（已落地）**；**ReAnime 已落地 P2（search+external，
+`priority=70`，§2.9 晚复测 `/api/v1/search`、`/api/v1/anime/{id}`、
+`/api/v1/watch/{id}` 均 200，`/api/v1/episodes` 仍 401）**；anime1.me 作为
+合法源 P2 候选；AniAPI 与 gogoanime 类需挑战求解器，暂不投入。
 
 ## 3. 接口契约
 
@@ -516,11 +518,13 @@ class ChannelInfo(BaseModel):
 5. ~~AnimePahe~~（已确认不可用 2026-08-13）：`.tv/.net` 存活但 API 被广告墙劫持
    （302 → `ch=1` → 广告落地页，真实浏览器也不返回 JSON），其余域名失效/CF，
    参考实现失效，保留记录不再投入。
-6. ~~ReAnime.to 流播放~~（流端点已确认不可用 2026-08-13）：晚些复测发现
-   `/api/v1/search` 与 `/api/v1/anime/{id}` **开放可用**（搜索/元数据），但
-   `/api/v1/episodes|watch|flix` 均 401（需站点 JS auth），参考实现 `/api/*`
-   已 404 过时（§2.9）。**P2 候选**：接入 search + external 外链（同 Kitsu
-   模式），流播放等 auth 机制破解后再升级。
+6. ~~ReAnime.to search + external~~（**已落地 2026-08-13**）：晚复测发现
+   `/api/v1/search`、`/api/v1/anime/{id}`、`/api/v1/watch/{id}` **开放可用**
+   （搜索/元数据），但 `/api/v1/episodes` 401（需站点 JS auth），参考实现
+   `/api/*` 已 404 过时（§2.9）。已按 Kitsu 模式落地 `ReAnimeChannel`：
+   `search` + `external_url`（`https://reanime.to/watch/{id}` 玩家页），
+   `external=True`、`priority=70`；`tests/test_reanime_channel.py` 5 例
+   fixture 测试。流播放等 auth 机制破解后再升级。
 7. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。
 8. ~~MiruroChannel~~（已落地 2026-08-13）：可播 HLS 备选，`external=False`、
    `priority=58`，AniList 搜索 + pipe 集数/流，curl_cffi 例外（§2.5 已先声明）。
@@ -546,7 +550,9 @@ class ChannelInfo(BaseModel):
 - Kitsu 官方 API（https://kitsu.io/api/edge），开放无需鉴权，本文为独立实现。
 - AnimePahe 思路参考 [Kylart/Animepahe-API](https://github.com/Kylart/Animepahe-API)
   （MIT），落地时在文件头保留版权声明。
-- ReAnime.to 思路参考本地 `~/work/Project/_reference/ReAnime.to-API`，落地时署名。
+- ReAnime.to 端点参考本地 `~/work/Project/_reference/ReAnime.to-API`
+  （reanime.py + decrypt.mjs，2026-06 参考实现已失效；本实现仅采用其探明的
+   `api/v1` 端点，流解密部分不采用），已落地 `ReAnimeChannel`（2026-08-13）。
 - AnimeXin 端点/选择器/提取流程参考本地
   `~/work/Project/_reference/aniyomi-extensions-archive`（Apache-2.0）：
   `lib-multisrc/animestream` 的 AnimeStream 模板、`src/all/animexin` 扩展、
