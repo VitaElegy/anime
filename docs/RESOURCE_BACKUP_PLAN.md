@@ -70,6 +70,7 @@
 
 | 源 | 类型 | 实测 | 结论 |
 |---|---|---|---|
+| **AnimeHeaven**（animeheaven.me） | 可播（mp4 直链，无 CF） | ✅ 全链路实测可播（2026-08-13） | **P0 可播备选**：搜索/集数/gate.php 直链 mp4，无需解密、无需绕 CF，是「实际观看」的关键兜底 |
 | **Kitsu**（kitsu.io/api/edge） | 元数据 + 集数 + 官方外链 | ✅ HTTP 200，4.4s 偏慢 | **第一优先落地**：`zh_cn` 中文标题、封面、简介、评分、集数（number/title/thumbnail）、Crunchyroll streaming-links |
 | **Shikimori**（shikimori.one/api） | 元数据（英/俄） | ✅ 301 → shikimori.io → 200 | 第二优先（元数据备用）：搜索相关性差（Frieren 首条是续作），无中文名 |
 | **AniAPI**（api.aniapi.com/v1） | 元数据 + 流 | ⚠️ 2026-08-13 起返回 JS 挑战页（JWT redirect），此前 200 | 暂缓：需 JS 能力客户端或 cookie，留作「挑战解除后优先」 |
@@ -100,6 +101,33 @@
   集数/streaming-links 端点**已探明可用**（§2.1），但当前 external 前端流
   只跳官方页、不渲染集数，故 v1 不实现 `get_detail`；待前端支持
   external 渠道集数浏览（P2）时再启用，接口契约不变。
+
+### 2.2 AnimeHeaven 接口速查（落地依据，2026-08-13 实测可播）
+
+AnimeHeaven 是当前少数**无 Cloudflare、直出 mp4** 的免费站，适合作为
+「实际观看」的可播备选（英文索引，中文经 CHINESE_TITLE_MAP 扩展后命中）。
+
+- 搜索：`GET https://animeheaven.me/fastsearch.php?xhr=1&s=<keyword>`
+  - 返回 HTML，命中为 `<a class='ac' href='/anime.php?<id>'>`；其中
+    `.fastimg img.coverimg` 的 `alt` 为标题、`src` 为封面（`/image.php?<k>`）
+- 详情+集数：`GET https://animeheaven.me/anime.php?<id>`
+  - `<title>` 标题（去掉 ` Anime | AnimeHeaven.Me` 后缀）、
+    `img.posterimg` 封面、`div.infodes.c` 简介
+  - 集数锚点：`<a ... onmouseover='gateh("<key>")' onclick='gatea("<key>")'
+    href='gate.php'>`，其中 `div.watch2` 为集号（页面按 28→1 倒序，需升序）
+  - `episode_ref` = gate key（不透明引用）
+- 流：`GET https://animeheaven.me/gate.php`，**必须带 Cookie `key=<episode_ref>`**
+  与 `Referer: https://animeheaven.me/`
+  - 返回 `<video><source src='https://ct.animeheaven.me/video.mp4?<key>&<token>'
+    type='video/mp4'>`，取首个含 `/video.mp4` 的 source 为直链 mp4
+  - mp4 CDN（`ct.animeheaven.me` / `ck.animeheaven.me`）支持 Range（实测 206），
+    播放走 StreamProxy，白名单需加 `animeheaven.me`（覆盖其 CDN 子域）
+  - 注意：CDN 对 HEAD 请求可能挂起（实测 20s 超时），健康探测/测试请用
+    Range GET 而非 HEAD
+- **v1 落地范围（2026-08-13）**：`search` + `get_detail`（单组集数，倒序转升序）
+  + `get_streams`（mp4 直链），`external=False`，`priority=55`
+  （可播备选，排在 Kitsu 外链备选之前）。
+
 
 ## 3. 接口契约
 
@@ -155,15 +183,23 @@ class ChannelInfo(BaseModel):
 
 ## 7. 落地顺序
 
-1. **KitsuChannel**（本次）：元数据 + 集数 + 官方外链，`external=True`，
-   `priority=60` —— 风险最低、收益最高（中文标题兜底 + 官方观看入口）。
-2. Shikimori 元数据（P2）：仅 search/detail，英文/俄文显示，备用。
-3. AnimePahe 可播源（P2）：cloudscraper 绕过 CF，需引入依赖并评估稳定性。
-4. ReAnime.to 可播源（P2）：参考实现 AES 解密，移植 + 充分测试。
-5. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。
+1. **AnimeHeavenChannel**（本次）：可播 mp4 直链源，`external=False`，
+   `priority=55` —— 2026-08-13 实测全链路可播（搜索 / 28 集 / gate.php 直链
+   mp4 + Range 206），是「中文搜 → 卡片 → 渠道 → 集数 → **实际观看**」
+   承诺的关键兜底。
+2. ~~KitsuChannel~~（已落地 2026-08-13）：元数据 + 集数 + 官方外链，
+   `external=True`，`priority=60`。
+3. Shikimori 元数据（P2）：仅 search/detail，英文/俄文显示，备用。
+4. AnimePahe 可播源（P2）：cloudscraper 绕过 CF，需引入依赖并评估稳定性。
+5. ReAnime.to 可播源（P2）：参考实现 AES 解密，移植 + 充分测试。
+6. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。
 
 ## 8. 移植声明
+## 8. 移植声明
 
+- AnimeHeaven 端点/选择器参考本地 `~/work/Project/_reference/Anivault-Scraper`
+  （`src/scrapers/animeheaven.ts`，SH0MIK；仓库未声明 License，故本实现为独立
+  实现，仅参考端点与选择器，不复制代码）。
 - Kitsu 官方 API（https://kitsu.io/api/edge），开放无需鉴权，本文为独立实现。
 - AnimePahe 思路参考 [Kylart/Animepahe-API](https://github.com/Kylart/Animepahe-API)
   （MIT），落地时在文件头保留版权声明。
