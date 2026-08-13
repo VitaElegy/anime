@@ -66,7 +66,7 @@
 - 并行调用所有 `healthy` 渠道的 `search`
 - 对中文/日文关键词做翻译扩展（离线 `CHINESE_TITLE_MAP` 优先，其次本地库，
   最后 Bangumi；任一路径失败都有下一层兜底）
-- 去重（按规范化标题）、合并、排序（渠道优先级 + 标题相似度）
+- 去重（同渠道同 detail_ref 或规范化标题相同 → 合并）、合并、排序（按渠道优先级分组，渠道内保持提供方自身返回顺序）
 - 输出「聚合后的渠道命中列表」，前端据此展示「渠道选项卡」
 
 **不负责**：播放、下载、元数据（元数据搜索仍走现有 Bangumi/AniList）。
@@ -144,6 +144,7 @@
 | `bilibili` | Bilibili 番剧 | 元数据+官方外链（不代理播放） | 现有 `app/services/bilibili.py` | 实现 |
 | `animeheaven` | AnimeHeaven（备选可播） | 在线播放（HTML + Cookie key + mp4 直链） | 独立实现，参考 Anivault-Scraper `animeheaven.ts` | 实现（2026-08-13 实测可播，priority=55） |
 | `kitsu` | Kitsu（备选库） | 元数据+官方外链（中文标题兜底） | 官方 API，`kitsu.io/api/edge` | 实现（2026-08-13 实测可用，priority=60） |
+| `allanime` | AllAnime / mkissa（备选库） | 元数据+官方外链（GraphQL 目录，sub/dub 集数） | 官方 GraphQL，`api.mkissa.net/api` | 实现（2026-08-13 实测可用，priority=62） |
 | `shikimori` | Shikimori（备选库） | 元数据+官方外链（英/俄标题） | 官方 API，`shikimori.one/api` | 实现（2026-08-13 实测可用，priority=65） |
 
 > 渠道可用性会漂移：2026-08-13 实测 AGE/Libvio/Zzzfun 全部不可用（已 `enabled=False`

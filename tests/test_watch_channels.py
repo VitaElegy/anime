@@ -568,6 +568,26 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0].detail_ref, "ak2gr")
 
+    async def test_search_preserves_provider_order_within_channel(self):
+        # The aggregator groups by (priority, channel) with a STABLE sort, so a
+        # provider's own ranking survives (e.g. AllAnime sorts the main series
+        # first by episode count). Title-based re-sorting would bury it.
+        class RankedProvider(ChannelProvider):
+            id = "ranked"
+            name = "Ranked"
+            priority = 60
+
+            async def search(self, keyword, page=1):
+                return [
+                    ChannelSearchResult(channel=self.id, title="Z Main Series", detail_ref="z1"),
+                    ChannelSearchResult(channel=self.id, title="A Spin-off", detail_ref="a1"),
+                ]
+
+        reg = ChannelRegistry()
+        reg.register(RankedProvider())
+        hits = await reg.search("x")
+        self.assertEqual([h.detail_ref for h in hits], ["z1", "a1"])
+
     async def test_search_orders_results_by_priority(self):
         class MainProvider(ChannelProvider):
             id = "main"

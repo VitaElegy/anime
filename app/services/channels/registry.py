@@ -15,6 +15,7 @@ from app.config import settings
 from app.models import ChannelDetail, ChannelInfo, ChannelSearchResult, ChannelStream
 from app.services import response_cache
 from app.services.channels.age import AgeChannel
+from app.services.channels.allanime import AllAnimeChannel
 from app.services.channels.anilibria import AnilibriaChannel
 from app.services.channels.animeheaven import AnimeHeavenChannel
 from app.services.channels.base import ChannelError, ChannelProvider
@@ -184,9 +185,11 @@ class ChannelRegistry:
         for task in done:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 task.exception()
-        # Main sources first, backup sources later (docs §1.2). Within the same
-        # priority keep a deterministic title order.
-        results.sort(key=lambda r: (self._priority_of(r.channel), r.title))
+        # Main sources first, backup sources later (docs §1.2). Group by
+        # (priority, channel) and rely on Python's STABLE sort so each
+        # provider's own return order survives (e.g. AllAnime ranks the main
+        # series first by episode count); deterministic across channels.
+        results.sort(key=lambda r: (self._priority_of(r.channel), r.channel))
         return results
 
     async def detail(self, channel_id: str, detail_ref: str) -> ChannelDetail:
@@ -276,6 +279,7 @@ else:
             GogoanimeChannel(),
             BilibiliChannel(),
             KitsuChannel(),
+            AllAnimeChannel(),
             ShikimoriChannel(),
         ]
     )
