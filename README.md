@@ -58,7 +58,7 @@ anime/
 │       ├── api/          # axios API 客户端
 │       └── lib/          # SSE 房间事件流、格式化工具
 ├── scripts/              # 真实环境 smoke 测试脚本（需运行中的后端）
-├── tests/                # pytest 后端单测（77 个用例）
+├── tests/                # pytest 后端单测（144 个用例）
 ├── docs/                 # 设计与协议文档（搜索 API / 同看协议 / 资源目录）
 ├── deploy/               # systemd / Nginx / Docker 部署示例
 ├── data/                 # 运行期数据（SQLite、封面、HLS 输出，已 gitignore）
