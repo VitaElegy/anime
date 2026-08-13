@@ -62,6 +62,12 @@ _ALLOWED_STREAM_HOSTS = (
     "shiora.site",
     "norami.top",
     "lostproject.club",
+    # Maccms 资源站家族直链 HLS CDN（360资源 maowushi / iKun bfikuncdn /
+    # 樱花资源 wgslsw + yhzybf 分片域；suffix match 覆盖子域）
+    "maowushi.com",
+    "bfikuncdn.com",
+    "wgslsw.com",
+    "yhzybf.com",
     # Gogoanime segment CDNs (real MPEG-TS disguised as .jpg/.html/...)
     "trycloud.pro",
     "watching.onl",
@@ -266,7 +272,10 @@ async def proxy_stream(
         headers["Range"] = range_header
 
     try:
-        upstream = await channel_http.get_client().get(url, headers=headers)
+        # Maccms/AES-128 segments can be >400KB through a slow proxy; the
+        # shared client's 8s cap causes spurious 502s on large segments, so
+        # the stream proxy allows a 30s read timeout (single-request override).
+        upstream = await channel_http.get_client().get(url, headers=headers, timeout=30.0)
         upstream.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("Stream proxy upstream error for %s: %s", url[:80], exc)

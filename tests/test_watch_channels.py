@@ -677,7 +677,7 @@ class WatchApiTests(unittest.TestCase):
 
     def test_stream_proxy_forwards_whitelisted_host_with_range(self):
         class FakeClient:
-            async def get(self, url, headers=None):
+            async def get(self, url, headers=None, timeout=None):
                 self.received_headers = headers or {}
                 return FakeResponse(
                     text="seg",
@@ -700,7 +700,7 @@ class WatchApiTests(unittest.TestCase):
 
     def test_stream_proxy_rewrites_hls_manifest(self):
         class FakeClient:
-            async def get(self, url, headers=None):
+            async def get(self, url, headers=None, timeout=None):
                 return FakeResponse(
                     text='#EXTM3U\n#EXTINF:10.0,\nseg-00000.ts',
                     status_code=200,
@@ -721,7 +721,7 @@ class WatchApiTests(unittest.TestCase):
 
     def test_stream_proxy_strips_obfuscated_segment_prefix(self):
         class FakeClient:
-            async def get(self, url, headers=None):
+            async def get(self, url, headers=None, timeout=None):
                 self.received_headers = headers or {}
                 return FakeResponse(
                     content=b"\x89PNG\r\n" + b"\x00" * 246 + b"\x47\x40\x11" + b"\x01\x02\x03",
@@ -746,7 +746,7 @@ class WatchApiTests(unittest.TestCase):
 
     def test_stream_proxy_keeps_non_stripped_segment_intact(self):
         class FakeClient:
-            async def get(self, url, headers=None):
+            async def get(self, url, headers=None, timeout=None):
                 return FakeResponse(
                     content=b"\x47\x40\x11\x01\x02\x03",
                     status_code=200,
@@ -1007,7 +1007,7 @@ class DailymotionProxyTests(unittest.TestCase):
 
     def test_non_dailymotion_host_never_touches_curl_cffi(self):
         class FakeClient:
-            async def get(self, url, headers=None):
+            async def get(self, url, headers=None, timeout=None):
                 self.url = url
                 self.received_headers = headers or {}
                 return FakeResponse(text="seg", status_code=200, headers={"content-type": "video/mp2t"})
