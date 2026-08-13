@@ -20,7 +20,7 @@ import logging
 from fastapi import APIRouter, Query
 
 from app.models import SearchResult, TorrentItem
-from app.services import anime_garden, bangumi, mikan, nyaa, subsplease
+from app.services import anilist, anime_garden, bangumi, mikan, nyaa, subsplease
 from app.services.keyword_expand import (
     expand_keywords as _translate_keyword,
 )
@@ -283,6 +283,94 @@ async def search_unified(
 # These two endpoints return JSON shaped exactly like the new SearchPage.tsx
 # expects, so the frontend does not need to do any remapping:
 #
+async def _anilist_hits_to_anime(q: str, limit: int) -> list[dict]:
+    """Fallback 2/3 — AniList metadata (works for Chinese full titles, JP, EN)."""
+    try:
+        payload = await anilist.search(q, per_page=limit)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("anilist search failed for %r: %s", q, e)
+        return []
+    out: list[dict] = []
+    for it in payload.get("items") or []:
+        if not it.get("id"):
+            continue
+        title = (
+            it.get("title_preferred")
+            or it.get("title_native")
+            or it.get("title_romaji")
+            or it.get("title_english")
+            or q
+        )
+        original = it.get("title_romaji") or it.get("title_english") or ""
+        out.append(
+            {
+                "id": str(it["id"]),
+                "title": title,
+                "titleOriginal": original if original != title else "",
+                "coverImage": it.get("cover_large") or it.get("cover_medium") or "",
+                "description": (it.get("description") or "")[:200],
+                "year": it.get("season_year") or "",
+                "score": it.get("score") or None,
+                "source": "AniList",
+            }
+        )
+    return out
+
+
+async def _channel_hits_to_anime(q: str, limit: int) -> list[dict]:
+    """Fallback 3/3 — aggregated channel hits (中文关键词扩展后仍可命中).
+
+    Bangumi/AniList 都不可用时，用渠道聚合搜索的命中构建卡片：id=0，
+    详情页 AnimeDetailPage 会按 title/rawTitle 重新走元数据 + 渠道查询。
+    中文标题优先，按归一化标题去重。
+    """
+    from app.services.channels.registry import registry
+
+    try:
+        hits = await registry.search(q, page=1)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("channel aggregate search failed for %r: %s", q, e)
+        return []
+    # 排序：精确包含关键词（归一化后）→ 中文标题 → 渠道名 → 标题；
+    # 每渠道最多 2 条，抑制 Maccms 模糊匹配噪声。
+    # 去重按「渠道:归一化标题」——跨渠道保留同名条目（不同渠道=不同播放源，
+    # 详情页需要多个可选渠道），同渠道内的重复条目才去掉。
+    q_norm = _normalize_title_key(q)
+    seen: set[str] = set()
+    scored: list[tuple[int, int, str, str, object]] = []
+    for hit in hits:
+        key = f"{hit.channel}:{_normalize_title_key(hit.title)}"
+        if not _normalize_title_key(hit.title) or key in seen:
+            continue
+        seen.add(key)
+        exact = 0 if (q_norm and q_norm in _normalize_title_key(hit.title)) else 1
+        chinese = 0 if _has_chinese(hit.title) else 1
+        scored.append((exact, chinese, hit.channel, hit.title, hit))
+    scored.sort(key=lambda t: (t[0], t[1], t[2], t[3]))
+    per_channel: dict[str, int] = {}
+    out: list[dict] = []
+    for _, _, _, _, hit in scored:
+        channel = hit.channel
+        if per_channel.get(channel, 0) >= 2:
+            continue
+        per_channel[channel] = per_channel.get(channel, 0) + 1
+        out.append(
+            {
+                "id": "0",
+                "title": hit.title,
+                "titleOriginal": hit.title_original or "",
+                "coverImage": hit.cover_url or "",
+                "description": (hit.description or "")[:200],
+                "year": hit.year or "",
+                "score": None,
+                "source": hit.channel,
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
 #   GET /api/search/anime?q=…     -> { anime: [ {id,title,coverImage,...} ] }
 #   GET /api/search/torrents?q=…  -> { torrents: [ {title,size,seeders,...} ] }
 #
@@ -304,6 +392,16 @@ async def search_anime_for_frontend(
         meta_list = await bangumi.search(q, limit=limit)
     except Exception as e:  # noqa: BLE001
         logger.warning("bangumi search failed for %r: %s", q, e)
+        meta_list = []
+
+    if not meta_list:
+        # 降级链：Bangumi → AniList → 渠道聚合（保证中文关键词仍有卡片可点）
+        anilist_out = await _anilist_hits_to_anime(q, limit)
+        if anilist_out:
+            return {"anime": anilist_out, "total": len(anilist_out), "fallback": "anilist"}
+        channel_out = await _channel_hits_to_anime(q, limit)
+        if channel_out:
+            return {"anime": channel_out, "total": len(channel_out), "fallback": "channels"}
         return {"anime": [], "error": "bangumi_unavailable"}
 
     out: list[dict] = []
