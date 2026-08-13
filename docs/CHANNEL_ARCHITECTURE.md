@@ -144,6 +144,7 @@
 | `bilibili` | Bilibili 番剧 | 元数据+官方外链（不代理播放） | 现有 `app/services/bilibili.py` | 实现 |
 | `animeheaven` | AnimeHeaven（备选可播） | 在线播放（HTML + Cookie key + mp4 直链） | 独立实现，参考 Anivault-Scraper `animeheaven.ts` | 实现（2026-08-13 实测可播，priority=55） |
 | `kitsu` | Kitsu（备选库） | 元数据+官方外链（中文标题兜底） | 官方 API，`kitsu.io/api/edge` | 实现（2026-08-13 实测可用，priority=60） |
+| `shikimori` | Shikimori（备选库） | 元数据+官方外链（英/俄标题） | 官方 API，`shikimori.one/api` | 实现（2026-08-13 实测可用，priority=65） |
 
 > 渠道可用性会漂移：2026-08-13 实测 AGE/Libvio/Zzzfun 全部不可用（已 `enabled=False`
 > 禁用，避免每次聚合搜索都等它们的超时；恢复后移除 `enabled=False` 即可），Anilibria 与

@@ -72,7 +72,7 @@
 |---|---|---|---|
 | **AnimeHeaven**（animeheaven.me） | 可播（mp4 直链，无 CF） | ✅ 全链路实测可播（2026-08-13） | **P0 可播备选**：搜索/集数/gate.php 直链 mp4，无需解密、无需绕 CF，是「实际观看」的关键兜底 |
 | **Kitsu**（kitsu.io/api/edge） | 元数据 + 集数 + 官方外链 | ✅ HTTP 200，4.4s 偏慢 | **第一优先落地**：`zh_cn` 中文标题、封面、简介、评分、集数（number/title/thumbnail）、Crunchyroll streaming-links |
-| **Shikimori**（shikimori.one/api） | 元数据（英/俄） | ✅ 301 → shikimori.io → 200 | 第二优先（元数据备用）：搜索相关性差（Frieren 首条是续作），无中文名 |
+| **Shikimori**（shikimori.one/api） | 元数据 + 官方外链 | ✅ 301 → shikimori.io → 200，实测可搜索 | **已落地**（2026-08-13）：search + external，`priority=65`，无中文名（英/俄显示），相关性弱于 Kitsu，仅作第二元数据备选 |
 | **AniAPI**（api.aniapi.com/v1） | 元数据 + 流 | ⚠️ 2026-08-13 起返回 JS 挑战页（JWT redirect），此前 200 | 暂缓：需 JS 能力客户端或 cookie，留作「挑战解除后优先」 |
 | **Jikan**（api.jikan.moe/v4） | 元数据 | ❌ 504（上游 MyAnimeList 拒绝） | 不可用，保留记录 |
 | **AnimePahe**（animepahe.ru/api） | 可播（m3u8+Kwik） | ⚠️ 301 → animepahe.su，Cloudflare 首页 | 需 cloudscraper/CF 绕过（参考 `_reference/Animepahe-API`），P2 |
@@ -127,6 +127,21 @@ AnimeHeaven 是当前少数**无 Cloudflare、直出 mp4** 的免费站，适合
 - **v1 落地范围（2026-08-13）**：`search` + `get_detail`（单组集数，倒序转升序）
   + `get_streams`（mp4 直链），`external=False`，`priority=55`
   （可播备选，排在 Kitsu 外链备选之前）。
+
+
+### 2.3 Shikimori 接口速查（落地依据，2026-08-13 实测可用）
+
+Shikimori（shikimori.one）是社区维护的开放动漫数据库，无需鉴权、无 Cloudflare，
+适合作为 Kitsu 之后的**第二元数据备选**（英/俄显示，无中文名）。
+
+- 搜索：`GET https://shikimori.one/api/animes?search=<kw>&limit=10&page=1`
+  - 返回 JSON 数组：`id`、`name`（罗马音）、`russian`（俄语标题）、
+    `image.preview / image.original`（**相对路径**，需拼 `https://shikimori.one` 前缀）、
+    `score`、`status`、`kind`、`episodes`、`episodes_aired`、`aired_on`
+  - 已知限制：搜索相关性一般（Frieren 首条是 2027 续作 anons）；无中文标题
+- 官方外链：`https://shikimori.one/animes/{id}`（页面列出可用的正版流媒体入口）
+- **v1 落地范围（2026-08-13）**：`search` + `external_url`，
+  `external=True`、`supports_detail=False`、`priority=65`（排在 Kitsu 60 之后）。
 
 
 ## 3. 接口契约
@@ -189,7 +204,8 @@ class ChannelInfo(BaseModel):
    承诺的关键兜底。
 2. ~~KitsuChannel~~（已落地 2026-08-13）：元数据 + 集数 + 官方外链，
    `external=True`，`priority=60`。
-3. Shikimori 元数据（P2）：仅 search/detail，英文/俄文显示，备用。
+3. ~~Shikimori 元数据~~（已落地 2026-08-13）：`search` + `external_url`，
+   `external=True`，`priority=65`（英/俄显示，无中文；相关性弱于 Kitsu，仅备用）。
 4. AnimePahe 可播源（P2）：cloudscraper 绕过 CF，需引入依赖并评估稳定性。
 5. ReAnime.to 可播源（P2）：参考实现 AES 解密，移植 + 充分测试。
 6. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。
