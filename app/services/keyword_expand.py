@@ -105,6 +105,30 @@ CHINESE_TITLE_MAP: dict[str, tuple[str, ...]] = {
     "凡人修仙传": ("A Record of a Mortal's Journey to Immortality", "Fanren Xiu Xian Chuan"),
     "灵笼": ("Ling Cage", "Linglong"),
     "三体": ("Three-Body Problem", "San Ti"),
+    # Popular donghua verified on AnimeXin (animexin.dev) 2026-08-13 via site
+    # search: the site indexes English/romaji titles, so these bridge Chinese
+    # names to what AnimeXin/Gogoanime/Anilibria can actually find.
+    "无上神帝": ("Supreme God Emperor", "Wu Shang Shen Di"),
+    "一念永恒": ("A Will Eternal", "Yi Nian Yong Heng"),
+    "仙逆": ("Renegade Immortal",),
+    "遮天": ("Shrouding the Heavens",),
+    "吞噬星空": ("Swallowed Star",),
+    "星辰变": ("Stellar Transformations", "Xing Chen Bian"),
+    "武动乾坤": ("Martial Universe", "Wu Dong Qian Kun"),
+    "大主宰": ("The Great Ruler",),
+    "神印王座": ("Throne of Seal",),
+    "元龙": ("Yuan Long", "First Dragon"),
+    "少年歌行": ("Shao Nian Ge Xing",),
+    "西行纪": ("Xi Xing Ji",),
+    "雾山五行": ("Fog Hill of Five Elements",),
+    "眷思量": ("The Island of Siliang",),
+    "镇魂街": ("Rakshasa Street",),
+    "择天记": ("Way of Choices", "Ze Tian Ji"),
+    "雪鹰领主": ("Xue Ying", "Snow Eagle Lord", "Lord Xue Ying"),
+    "天宝伏妖录": ("Legend of Exorcism",),
+    "武庚纪": ("Wu Geng Ji",),
+    "牧神记": ("Tales of Herding Gods", "Mu Shen Ji"),
+    "剑来": ("Sword of Coming", "Jian Lai"),
 }
 
 

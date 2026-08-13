@@ -244,7 +244,10 @@ WordPress 站，使用 AnimeStream 模板（参考 `aniyomi-extensions-archive` 
 - 搜索：`GET https://animexin.dev/page/1/?s=<kw>`
   - 返回 HTML；命中卡片 `div.listupd article a.tip`（`href`=详情页 URL、
     `img` 的 `src`/`alt`=封面/标题），详情页形如 `/anime/<slug>/`
-  - 中文关键词直接可命中（站内收录国漫罗马音/英文名），无需 registry 扩展
+  - 站点只收录英文/罗马音名：中文关键词会返回 Not Found（2026-08-13 实测
+    `s=无上神帝` → Not Found，`s=Supreme God Emperor` → 命中）。中文搜索依赖
+    registry 的离线扩展表 `CHINESE_TITLE_MAP`（keyword_expand.py 国漫段，已按
+    本站实测收录 20+ 部，见下「已知限制」），Bangumi 熔断/离线时仍可命中
 - 详情+集数：`GET https://animexin.dev/anime/<slug>/`
   - `<title>` 标题（去 ` - AnimeXin` 后缀）、`img` 封面、`.entry-content` 简介
   - 集数锚点：`div.eplister > ul > li > a`，`href`=集数页 URL
@@ -274,8 +277,12 @@ WordPress 站，使用 AnimeStream 模板（参考 `aniyomi-extensions-archive` 
   提取），`external=False`、`supports_search/detail/streams=True`、
   `language="en"`（英/印尼字幕）、`priority=56`（可播备选：AnimeHeaven 55 之后、
   Miruro 58 之前，因为国漫内容与现有主力互补）。
-- 已知限制：站点无中文标题（英文/罗马音，registry 扩展后命中）；页面大且慢
-  （搜索 ~7s、详情 ~10s）；Dailymotion 依赖第三方 embed，个别集可能换源。
+- 已知限制：站点无中文标题且中文搜索返回 Not Found —— 中文→英文名桥接依赖
+  `CHINESE_TITLE_MAP` 国漫段（2026-08-13 实测新增 20+ 部：无上神帝/一念永恒/
+  仙逆/遮天/吞噬星空/星辰变/武动乾坤/大主宰/神印王座/元龙/少年歌行/西行纪/
+  雾山五行/眷思量/镇魂街/择天记/雪鹰领主/天宝伏妖录/武庚纪/牧神记/剑来等）；
+  页面大且慢（搜索 ~7s、详情 ~10s，走共享 httpx 8s 需注意聚合 8s 上限）；
+  Dailymotion 依赖第三方 embed，个别集可能换源。
 
 ## 3. 接口契约
 

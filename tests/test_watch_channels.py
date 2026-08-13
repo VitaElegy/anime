@@ -795,7 +795,23 @@ class KeywordExpansionTests(_TempDBCacheTestCase):
             alts = await expand_keywords("海贼王")
         self.assertIn("One Piece", alts)
 
-    async def test_search_expands_keywords_and_dedupes_per_channel(self):
+    async def test_static_map_donghua_reaches_animexin_english_names(self):
+        # Regression: AnimeXin indexes English/romaji titles (verified
+        # 2026-08-13 on animexin.dev) — Chinese-only search must still expand
+        # to the English name even when Bangumi is unreachable.
+        from app.services.keyword_expand import expand_keywords
+
+        with mock.patch("app.services.keyword_expand.bangumi.search", side_effect=RuntimeError("offline")):
+            alts = await expand_keywords("无上神帝")
+        self.assertIn("无上神帝", alts)
+        self.assertIn("Supreme God Emperor", alts)
+        self.assertIn("Wu Shang Shen Di", alts)
+
+        alts = await expand_keywords("雪鹰领主")
+        self.assertIn("Xue Ying", alts)
+        self.assertIn("Snow Eagle Lord", alts)
+
+
         calls: list[str] = []
 
         class ExpandingProvider(ChannelProvider):
