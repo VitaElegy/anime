@@ -38,6 +38,8 @@ class AnilibriaChannel(ChannelProvider):
     name = "Anilibria"
     language = "en"
     description = "英文索引 + 直连 HLS（无防盗链）"
+    #: Main playable source — top of the channel tab (docs/CHANNEL_ARCHITECTURE.md §1.1).
+    priority = 10
 
     #: Episode references are compact JSON so get_streams can pick the fastest
     #: path (single-episode endpoint) and fall back to the release detail.

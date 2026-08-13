@@ -23,6 +23,7 @@ from app.services.channels.fixture import FixtureChannel
 from app.services.channels.gogoanime import GogoanimeChannel
 from app.services.channels.kitsu import KitsuChannel
 from app.services.channels.libvio import LibvioChannel
+from app.services.channels.shikimori import ShikimoriChannel
 from app.services.channels.zzzfun import ZzzfunChannel
 from app.services.keyword_expand import expand_keywords, normalize_title_key
 
@@ -104,7 +105,13 @@ class ChannelRegistry:
         self._cooldown_until.pop(channel_id, None)
 
     def list_channels(self) -> list[ChannelInfo]:
-        return [provider.info(healthy=self.is_healthy(provider)) for provider in self._providers.values()]
+        """All providers ordered by tab priority (docs §1.2): main 0-50 first,
+        backup 60+ after, disabled last. Stable within a priority by name."""
+        ordered = sorted(
+            self._providers.values(),
+            key=lambda p: (p.priority, p.name),
+        )
+        return [provider.info(healthy=self.is_healthy(provider)) for provider in ordered]
 
     # ------------------------------------------------------------- aggregation
 
@@ -118,7 +125,12 @@ class ChannelRegistry:
         """
         alternatives = await _expand_keywords(keyword)
         results: list[ChannelSearchResult] = []
-        seen: set[tuple[str, str]] = set()
+        # Dual-key dedup (docs §1.2): a hit is a duplicate when the SAME
+        # channel returns the same opaque detail_ref (e.g. AnimeHeaven returns
+        # both "Sousou no Frieren" and "Frieren: Beyond Journey's End" for one
+        # anime) OR the same normalized title (keyword-expansion variants).
+        seen_refs: set[tuple[str, str]] = set()
+        seen_titles: set[tuple[str, str]] = set()
 
         async def _run(provider: ChannelProvider) -> None:
             if not provider.supports_search or not self.is_healthy(provider):
@@ -146,9 +158,11 @@ class ChannelRegistry:
                         except Exception:
                             logger.warning("Channel %s returned an invalid search hit", provider.id)
                             continue
-                        key = (hit.channel, normalize_title_key(hit.title))
-                        if key not in seen:
-                            seen.add(key)
+                        ref_key = (hit.channel, hit.detail_ref)
+                        title_key = (hit.channel, normalize_title_key(hit.title))
+                        if ref_key not in seen_refs and title_key not in seen_titles:
+                            seen_refs.add(ref_key)
+                            seen_titles.add(title_key)
                             results.append(hit)
                 except ChannelError as exc:
                     failed = True
@@ -170,6 +184,9 @@ class ChannelRegistry:
         for task in done:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 task.exception()
+        # Main sources first, backup sources later (docs §1.2). Within the same
+        # priority keep a deterministic title order.
+        results.sort(key=lambda r: (self._priority_of(r.channel), r.title))
         return results
 
     async def detail(self, channel_id: str, detail_ref: str) -> ChannelDetail:
@@ -218,6 +235,10 @@ class ChannelRegistry:
             return ""
         return provider.external_url(detail_ref)
 
+    def _priority_of(self, channel_id: str) -> int:
+        provider = self._providers.get(channel_id)
+        return provider.priority if provider is not None else 100
+
     def _require_healthy(self, channel_id: str) -> ChannelProvider:
         provider = self._providers.get(channel_id)
         if provider is None:
@@ -255,5 +276,6 @@ else:
             GogoanimeChannel(),
             BilibiliChannel(),
             KitsuChannel(),
+            ShikimoriChannel(),
         ]
     )

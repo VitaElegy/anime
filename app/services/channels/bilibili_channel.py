@@ -26,6 +26,8 @@ class BilibiliChannel(ChannelProvider):
     supports_streams = False
     external = True
     description = "B站正版番剧（跳转官方页面观看）"
+    #: Main external source (docs/CHANNEL_ARCHITECTURE.md §1.1).
+    priority = 30
 
     async def search(self, keyword: str, page: int = 1) -> list[ChannelSearchResult]:
         links = await bilibili_service.search_bangumi(keyword, limit=12)

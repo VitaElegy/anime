@@ -42,6 +42,8 @@ class GogoanimeChannel(ChannelProvider):
     name = "Gogoanime"
     language = "en"
     description = "英文资源站（megaplay HLS，需代理访问）"
+    #: Main playable source (docs/CHANNEL_ARCHITECTURE.md §1.1).
+    priority = 20
 
     @staticmethod
     def _episode_ref(slug: str, ep: int) -> str:

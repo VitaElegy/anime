@@ -520,6 +520,76 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(LookupError):
             await reg.streams("nope", "ref")
 
+    async def test_list_channels_orders_by_priority(self):
+        class LowProvider(ChannelProvider):
+            id = "low"
+            name = "Low"
+            priority = 10
+
+            async def search(self, keyword, page=1):
+                return []
+
+        class MidProvider(ChannelProvider):
+            id = "mid"
+            name = "Mid"
+            priority = 55
+
+            async def search(self, keyword, page=1):
+                return []
+
+        class HighProvider(ChannelProvider):
+            id = "high"
+            name = "High"
+            priority = 100
+
+            async def search(self, keyword, page=1):
+                return []
+
+        reg = ChannelRegistry()
+        reg.register_all([HighProvider(), LowProvider(), MidProvider()])
+        self.assertEqual([c.id for c in reg.list_channels()], ["low", "mid", "high"])
+
+    async def test_search_dedupes_same_detail_ref_from_one_channel(self):
+        # AnimeHeaven returns two title variants for ONE anime (same opaque
+        # detail_ref) — must collapse to a single card (docs/RESOURCE_BACKUP_PLAN.md §1.2).
+        class DupeProvider(ChannelProvider):
+            id = "dupe"
+            name = "Dupe"
+
+            async def search(self, keyword, page=1):
+                return [
+                    ChannelSearchResult(channel=self.id, title="Sousou no Frieren", detail_ref="ak2gr"),
+                    ChannelSearchResult(channel=self.id, title="Frieren: Beyond Journey's End", detail_ref="ak2gr"),
+                ]
+
+        reg = ChannelRegistry()
+        reg.register(DupeProvider())
+        hits = await reg.search("frieren")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].detail_ref, "ak2gr")
+
+    async def test_search_orders_results_by_priority(self):
+        class MainProvider(ChannelProvider):
+            id = "main"
+            name = "Main"
+            priority = 10
+
+            async def search(self, keyword, page=1):
+                return [ChannelSearchResult(channel=self.id, title="A Main", detail_ref="m1")]
+
+        class BackupProvider(ChannelProvider):
+            id = "backup"
+            name = "Backup"
+            priority = 60
+
+            async def search(self, keyword, page=1):
+                return [ChannelSearchResult(channel=self.id, title="Z Backup", detail_ref="b1")]
+
+        reg = ChannelRegistry()
+        reg.register_all([BackupProvider(), MainProvider()])
+        hits = await reg.search("x")
+        self.assertEqual([h.channel for h in hits], ["main", "backup"])
+
 
 class WatchApiTests(unittest.TestCase):
     def setUp(self):
