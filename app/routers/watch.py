@@ -13,6 +13,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 
+from app.config import settings
 from app.models import ChannelDetail, ChannelInfo, ChannelSearchResult, ChannelStream
 from app.services.channels import http as channel_http
 from app.services.channels.base import ChannelError
@@ -62,12 +63,19 @@ _ALLOWED_STREAM_HOSTS = (
 )
 
 
+
 def _host_allowed(url: str) -> bool:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return False
     host = parsed.hostname.lower()
-    return any(host == suffix or host.endswith(f".{suffix}") for suffix in _ALLOWED_STREAM_HOSTS)
+    suffixes = _ALLOWED_STREAM_HOSTS
+    if settings.E2E_FIXTURE:
+        # Hermetic E2E mode only: allow the locally served fixture webm so the
+        # test plays through the REAL stream proxy (Range/headers/rewrite)
+        # without weakening SSRF protection in production (env-gated).
+        suffixes = suffixes + ("127.0.0.1", "localhost")
+    return any(host == suffix or host.endswith(f".{suffix}") for suffix in suffixes)
 
 
 #: Host markers of megaplay's obfuscated segments. The server serves real
