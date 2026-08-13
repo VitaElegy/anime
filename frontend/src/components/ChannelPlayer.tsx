@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Loader2, MonitorPlay, RefreshCcw, X } from 'lucide-react'
 import { watchProxyUrl } from '@/api'
 import { cn } from '@/lib/utils'
@@ -128,7 +129,7 @@ export default function ChannelPlayer({ title, streams, onClose, onRetry }: Chan
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex flex-col bg-black/95 backdrop-blur-sm">
       {/* Top bar */}
       <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
@@ -218,6 +219,7 @@ export default function ChannelPlayer({ title, streams, onClose, onRetry }: Chan
           ))}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   )
 }
