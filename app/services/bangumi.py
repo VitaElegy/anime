@@ -25,6 +25,25 @@ _lock = asyncio.Lock()
 # In-memory cache: subject_id -> AnimeMetadata
 _metadata_cache: dict[int, AnimeMetadata] = {}
 
+# ---------------------------------------------------------------------------
+# Search fast-fail guards (P0 regression: when Bangumi is unreachable every
+# first search used to stall ~60s — v0 30s + legacy 30s serial). Three layers:
+#   1. SEARCH_TIMEOUT_SECONDS  — per-search hard cap (short)
+#   2. negative cache          — a failed keyword stays "failed" briefly so a
+#                                burst of identical queries never re-hits the
+#                                dead endpoint
+#   3. circuit breaker         — after N consecutive failures, skip the network
+#                                entirely for a cooldown window
+# ---------------------------------------------------------------------------
+SEARCH_TIMEOUT_SECONDS = 3.0
+SEARCH_FAIL_CACHE_TTL_SECONDS = 60.0
+SEARCH_FAILURE_THRESHOLD = 3
+SEARCH_COOLDOWN_SECONDS = 120.0
+
+_search_failures: int = 0
+_search_cooldown_until: float = 0.0
+_negative_search_cache: dict[str, float] = {}
+
 _client: httpx.AsyncClient | None = None
 
 
@@ -53,25 +72,67 @@ async def _rate_limit():
         _last_request_time = time.monotonic()
 
 
+def _in_search_cooldown() -> bool:
+    return _search_failures >= SEARCH_FAILURE_THRESHOLD and time.monotonic() < _search_cooldown_until
+
+
+def _mark_search_failure() -> None:
+    global _search_failures, _search_cooldown_until
+    _search_failures += 1
+    if _search_failures >= SEARCH_FAILURE_THRESHOLD:
+        _search_cooldown_until = time.monotonic() + SEARCH_COOLDOWN_SECONDS
+        logger.warning("Bangumi search circuit open (cooldown %ss)", SEARCH_COOLDOWN_SECONDS)
+
+
+def _mark_search_success() -> None:
+    global _search_failures, _search_cooldown_until
+    _search_failures = 0
+    _search_cooldown_until = 0.0
+
+
 async def search(keyword: str, limit: int = 25, force_refresh: bool = False) -> list[AnimeMetadata]:
+    """Search Bangumi with fast-fail guards.
+
+    Returns [] (never raises) when Bangumi is unreachable so offline callers
+    (channel keyword expansion, torrent search, metadata cards) fall back to
+    their local strategies instead of stalling for ~60s.
+    """
+    if _in_search_cooldown():
+        return []
+
     cache_key = response_cache.make_cache_key(
         "bangumi.search_v0",
         keyword=keyword.strip().lower(),
         limit=limit,
     )
+    neg_key = f"{cache_key}:neg"
+    if time.monotonic() < _negative_search_cache.get(neg_key, 0.0):
+        return []
 
     async def producer():
-        return [item.model_dump(mode="json") for item in await _search_uncached(keyword, limit=limit)]
+        try:
+            items = await asyncio.wait_for(
+                _search_uncached(keyword, limit=limit), timeout=SEARCH_TIMEOUT_SECONDS
+            )
+            _mark_search_success()
+            return [item.model_dump(mode="json") for item in items]
+        except Exception:
+            _mark_search_failure()
+            _negative_search_cache[neg_key] = time.monotonic() + SEARCH_FAIL_CACHE_TTL_SECONDS
+            raise
 
-    payload = await response_cache.get_or_set_json(
-        cache_key=cache_key,
-        cache_group="bangumi.search",
-        ttl_seconds=21600,
-        producer=producer,
-        force_refresh=force_refresh,
-        allow_stale=True,
-    )
-    return [AnimeMetadata.model_validate(item) for item in (payload or [])]
+    try:
+        payload = await response_cache.get_or_set_json(
+            cache_key=cache_key,
+            cache_group="bangumi.search",
+            ttl_seconds=21600,
+            producer=producer,
+            force_refresh=force_refresh,
+            allow_stale=True,
+        )
+        return [AnimeMetadata.model_validate(item) for item in (payload or [])]
+    except Exception:
+        return []
 
 
 async def _search_uncached(keyword: str, limit: int = 25) -> list[AnimeMetadata]:
