@@ -1001,7 +1001,7 @@ class DailymotionProxyTests(unittest.TestCase):
         self.assertIn("User-Agent", headers)
         # curl_cffi chrome124 impersonation + 20s timeout used for DM.
         self.assertEqual(session.kwargs["impersonate"], "chrome124")
-        self.assertEqual(session.kwargs["timeout"], 20.0)
+        self.assertEqual(session.kwargs["timeout"], 30.0)
         # DM upstream fetch itself is fragment-free.
         self.assertEqual(session.url, "https://geo.dailymotion.com/player/x/master.m3u8")
 
@@ -1065,13 +1065,99 @@ class MaccmsChromeFpProxyTests(unittest.TestCase):
         session = self.FakeCurlSession.instances[-1]
         # Chrome fingerprint + caller's channel Referer (no DM Origin).
         self.assertEqual(session.kwargs["impersonate"], "chrome124")
-        self.assertEqual(session.kwargs["timeout"], 20.0)
+        self.assertEqual(session.kwargs["timeout"], 30.0)
         self.assertEqual(session.kwargs["headers"]["Referer"], "https://bfzyapi.com/")
         self.assertNotIn("Origin", session.kwargs["headers"])
         self.assertEqual(session.url, "https://c1.rrcdnbf5.com/video/zangsongdefulilian/%E7%AC%AC01%E9%9B%86/index.m3u8")
         # Segments are rewritten to the same-origin stream proxy.
         self.assertIn("/api/watch/proxy/stream?url=https%3A%2F%2Fc1.rrcdnbf5.com%2Fvideo%2Fzangsongdefulilian%2F", resp.text)
         self.assertIn("0000000.ts", resp.text)
+
+    def test_anilibria_ts_segment_through_curl_cffi(self):
+        # cache.libria.fun serves m3u8 fine over plain httpx but TS segments
+        # 302-redirect to a target the shared follow-redirect client cannot
+        # fetch (502); chrome124 direct fetch returns 200 (verified 2026-08-14).
+        class FakeCurlSession:
+            instances: list[MaccmsChromeFpProxyTests.FakeCurlSession] = []
+
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                type(self).instances.append(self)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def get(self, url):
+                self.url = url
+                return FakeResponse(
+                    content=b"G@\x11\x10\x00B\xf0%\x00\x01\xc1\x00\x00\xff\x01\xff\x00\x01\xfc\x80\x14H\x12\x01\x06FFmpeg",
+                    status_code=200,
+                    headers={"content-type": "video/mp2t"},
+                )
+
+        with mock.patch("app.routers.watch.CurlAsyncSession", FakeCurlSession):
+            client = TestClient(app)
+            resp = client.get(
+                "/api/watch/proxy/stream",
+                params={
+                    "url": "https://cache.libria.fun/videos/media/ts/9542/1/1080/aa675e5f3fe5b528517d812182344011_00000.ts",
+                    "referer": "https://anilibria.top/",
+                },
+            )
+            client.close()
+        self.assertEqual(resp.status_code, 200)
+        fake = FakeCurlSession.instances[-1]
+        # Chrome fingerprint + channel's own Referer (no DM Origin).
+        self.assertEqual(fake.kwargs["impersonate"], "chrome124")
+        # Direct fetch only (no env-proxy pickup for non-DM chrome-fp CDNs).
+        self.assertFalse(fake.kwargs["trust_env"])
+        self.assertEqual(fake.kwargs["headers"]["Referer"], "https://anilibria.top/")
+        self.assertNotIn("Origin", fake.kwargs["headers"])
+        self.assertEqual(
+            fake.url,
+            "https://cache.libria.fun/videos/media/ts/9542/1/1080/aa675e5f3fe5b528517d812182344011_00000.ts",
+        )
+
+    def test_chrome_fp_transient_error_retries(self):
+        # cache.libria.fun intermittently drops big TS transfers with
+        # "curl (56) Connection closed abruptly"; _fetch_chrome_fp must retry
+        # and succeed on the next attempt instead of failing the playback.
+        class FlakyCurlSession:
+            instances: list[MaccmsChromeFpProxyTests.FlakyCurlSession] = []
+
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                type(self).instances.append(self)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def get(self, url):
+                if len(type(self).instances) == 1:
+                    raise RuntimeError("curl: (56) Connection closed abruptly")
+                return FakeResponse(content=b"segdata", status_code=200, headers={"content-type": "video/mp2t"})
+
+        with mock.patch("app.routers.watch.CurlAsyncSession", FlakyCurlSession):
+            client = TestClient(app)
+            resp = client.get(
+                "/api/watch/proxy/stream",
+                params={
+                    "url": "https://cache.libria.fun/videos/media/ts/9542/1/1080/aa675e5f3fe5b528517d812182344011_00000.ts",
+                    "referer": "https://anilibria.top/",
+                },
+            )
+            client.close()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, b"segdata")
+        # First attempt failed, retry created a second session.
+        self.assertEqual(len(FlakyCurlSession.instances), 2)
+        self.assertFalse(FlakyCurlSession.instances[-1].kwargs["trust_env"])
 
     def test_non_chrome_fp_maccms_cdn_uses_httpx(self):
         class FakeClient:

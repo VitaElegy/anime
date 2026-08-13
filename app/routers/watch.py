@@ -5,6 +5,7 @@ Contract: docs/CHANNEL_ARCHITECTURE.md §4.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from urllib.parse import urlencode, urljoin, urlparse
@@ -111,12 +112,17 @@ def _host_allowed(url: str) -> bool:
 #: chrome124); the shared httpx client gets 403/404 on them (docs §2.6/§2.8).
 #: Dailymotion additionally requires a dailymotion.com Referer; the Maccms
 #: CDNs (rrcdnbf5 / baofeng9 / ffzy-plays) accept the channel's own Referer.
+#: Anilibria's cache.libria.fun serves m3u8 manifests fine over plain httpx,
+#: but TS segments 302-redirect to a target the shared client (follow_redirects
+#: + Clash proxy) cannot fetch -> 502; chrome124 direct fetch returns 200
+#: (verified 2026-08-14), so it must use the curl_cffi path too.
 _CHROME_FP_HOST_MARKERS = (
     "dailymotion.com",
     "dmcdn.net",
     "rrcdnbf5.com",
     "baofeng9.com",
     "ffzy-plays.com",
+    "libria.fun",
 )
 
 #: Dailymotion host suffixes (subset of _CHROME_FP_HOST_MARKERS that also
@@ -274,24 +280,40 @@ async def _fetch_chrome_fp(
         headers["Range"] = range_header
     kwargs: dict = {
         "impersonate": "chrome124",
-        "timeout": 20.0,
+        "timeout": 30.0,
         "headers": headers,
     }
     # DM's CDN is only reachable via the proxy. The Maccms chrome-fp CDNs
     # (rrcdnbf5 / baofeng9 / ffzy-plays) REGION-DENY the Clash exit and only
     # accept a direct connection from a CN residential/ISP IP (verified
     # 2026-08-13: direct chrome124 200, via proxy 403/404), so they bypass
-    # the proxy on purpose (docs §2.8).
+    # the proxy on purpose (docs §2.8). libria.fun TS segments also prefer
+    # direct (2026-08-14: direct stable, Clash exit flaky). Non-DM CDNs get
+    # trust_env=False so curl_cffi never picks up HTTP(S)_PROXY env vars.
     if settings.HTTP_PROXY and _is_dailymotion_host(url):
         kwargs["proxies"] = {"http": settings.HTTP_PROXY, "https": settings.HTTP_PROXY}
-    try:
-        async with CurlAsyncSession(**kwargs) as client:
-            upstream = await client.get(url)
-            upstream.raise_for_status()
-        return upstream
-    except Exception as exc:
-        logger.warning("Dailymotion proxy upstream error for %s: %s", url[:80], exc)
-        raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
+    else:
+        kwargs["trust_env"] = False
+    # CDNs sometimes drop big segment transfers ("curl (56) Connection closed
+    # abruptly", observed on cache.libria.fun 2026-08-14 during repeated
+    # downloads — transient rate limiting); retrying usually succeeds.
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            async with CurlAsyncSession(**kwargs) as client:
+                upstream = await client.get(url)
+                upstream.raise_for_status()
+            return upstream
+        except Exception as exc:
+            last_exc = exc
+            if attempt < 2:
+                logger.warning(
+                    "Chrome-fp upstream error for %s (attempt %d/3): %s",
+                    url[:80], attempt + 1, exc,
+                )
+                await asyncio.sleep(1.0 * (attempt + 1))
+    logger.warning("Chrome-fp proxy upstream error for %s: %s", url[:80], last_exc)
+    raise HTTPException(status_code=502, detail=f"upstream error: {last_exc}") from last_exc
 
 
 @router.get("/proxy/stream", summary="Proxy m3u8/segments with channel headers (Range supported)")
