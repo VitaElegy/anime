@@ -359,24 +359,42 @@ Anikoto（anikoto.net）是 HiAnime/Zoro 风格克隆（参考
 
 AppleCMS 资源站是「直链 HLS + 标准 JSON API」的中文资源站家族：每个站点暴露
 `GET /api.php/provide/vod`，搜索/详情/播放全链路为 JSON + 直链 m3u8，主域无
-Cloudflare。实测（Clash 7892 代理）**搜索/详情/播放全通且分片可播**的成员：
-`360zy.com`、`bfzyapi.com`、`api.ffzyapi.com`、`ikunzyapi.com`、`jisuzy.com`、
-`yhzy.cc`、`subozy.com`。参考实现为 Miru 扩展仓库（MIT）：
-`~/work/Project/_reference/repo/repo/{360zy.com,ikunzy.com,yhzy.cc}.js`。
+Cloudflare。实测（Clash 7892 代理）**搜索/详情/播放全通且分片可播**并已注册：
+`360zy`、`ikunzy`、`yhzy`、`jisuzy`、`subozy`、`bfzyapi`、`ffzy`。参考实现为
+Miru 扩展仓库（MIT）：
+`~/work/Project/_reference/repo/repo/{360zy,ikunzy,yhzy,jisuzy,subozy,bfzy,ffzy}*.js`。
 
 - 搜索：`GET https://<domain>/api.php/provide/vod?ac=detail&wd=<kw>&pg=<n>`
   - 返回 `{ list: [ { vod_id, vod_name, vod_pic, vod_remarks, vod_year,
     vod_content, vod_en, ... } ] }`；`wd` 直接支持中文关键词（无需扩展表）
+- **`from=` 播放源提示（关键，2026-08-13 实测）**：部分站点默认返回**多播放源**
+  `vod_play_url` 用 `$$$` 分隔，其中第一源常是**播放器页**（`/play/<id>`，HTML
+  不可编程，如 jisuzy 的 `jsyun`、subozy 的 `subyun`）。Miru 扩展通过在请求里
+  加 `from=jsm3u8` / `from=subm3u8` / `from=ffm3u8` 让 API 只返回直链 m3u8 源。
+  基类 `MaccmsChannel` 的 `api_from` 类属性即此提示；解析器同时做了兜底：即使
+  没传 `from=`，`_parse_play_sources()` 也会按 `$$$` 切源并**丢弃无 m3u8/mp4
+  扩展名的播放器页源**（仅当全部源都非直链时才保留）。
 - 详情+集数：`GET ...?ac=detail&ids=<vod_id>` → `list[0]`
   - 集数在 `vod_play_url` 字段，格式：
     `第01集$https://cdn/.../index.m3u8#第02集$https://cdn/.../index.m3u8`
     （`$` 分隔集名与 URL，`#` 分隔多集；集 URL 即 HLS master 直链）
 - 播放：master/子清单/分片均为普通 m3u8 + MPEG-TS（实测分片 `47 40` magic），
   经 `/api/watch/proxy/stream` 转发即可；请求需带 `Referer: https://<主域>/`
-- **实测可播 CDN 清单**（watch.py `_ALLOWED_STREAM_HOSTS` 已加）：
+- **实测可播 CDN 清单**（watch.py `_ALLOWED_STREAM_HOSTS` 已加，suffix match）：
   - 360资源：`vod1.maowushi.com`（master/分片，360zy.com）
   - iKun资源：`bfikuncdn.com`（ikunzyapi.com）
   - 樱花资源：`vod12.wgslsw.com` / `ts1.yhzybf.com`（yhzy.cc）
+  - 极速资源：`vv.jisuzyv.com`（master/key）+ `p.jisuts.com:999`（分片，jisuzy）
+  - 速播资源：`play.xluuss.com` / `play.subokk.com`（master/key，subozy 当前
+    master 域）+ `g.xlzyd.com:9999`（分片）
+  - 暴风资源：`c1.rrcdnbf5.com` / `v.baofeng9.com`（bfzyapi）
+  - 非凡资源：`vip.ffzy-plays.com`（ffzy）
+- **Chrome TLS 指纹 CDN（2026-08-13 实测补充）**：暴风/非凡的 CDN
+  （`rrcdnbf5.com` / `baofeng9.com` / `ffzy-plays.com`）对**普通 httpx/curl
+  TLS 指纹一律 403/404**，curl_cffi chrome124 则 200。watch.py 已把 Dailymotion
+  特判泛化为 `_CHROME_FP_HOST_MARKERS`：命中即走 curl_cffi chrome124；DM 强制
+  dailymotion.com Referer，Maccms CDN 透传渠道自己的 Referer。分片相对路径
+  （`0000000.ts`）由 `rewrite_hls_playlist` 统一改写为代理地址。
 - **AES-128 加密 HLS（2026-08-13 实测补充）**：360资源部分剧集（如「葬送的
   芙莉莲 第二季」）子清单带 `#EXT-X-KEY:METHOD=AES-128,URI=".../key.key"`，
   分片为密文（非裸 TS）。播放链路不受影响：`rewrite_hls_playlist` 会把 key
@@ -394,15 +412,23 @@ Cloudflare。实测（Clash 7892 代理）**搜索/详情/播放全通且分片�
   - `IKunChannel`（ikunzy）：域名 `ikunzyapi.com / ikunzy.com / ikunzy.net /
     ikunzy.org / ikunzy.vip`
   - `YinghuaChannel`（yhzy）：域名 `yhzy.cc`
-- **测试**：`tests/test_maccms_channel.py` 11 例 fixture 测试（搜索解析 / 镜像
-  竞速回退 / 全挂告警 / 详情集数解析 / 流解析 / 代理白名单 / 注册状态）
+  - `JisuChannel`（jisuzy）：域名 `jszyapi.com / jisuzy.com`，`api_from=jsm3u8`
+  - `SuboChannel`（subozy）：域名 `subocaiji.com / subozy.com / suboziyuan.com /
+    suboziyuan.net`，`api_from=subm3u8`
+  - `BaofengChannel`（bfzyapi）：域名 `bfzyapi.com`，`api_from=bfzym3u8`
+  - `FeifanChannel`（ffzy）：域名 `ffzy.tv / ffzy1-5.tv`，`api_from=ffm3u8`
+- **测试**：`tests/test_maccms_channel.py` 14 例 fixture 测试（搜索解析 / 镜像
+  竞速回退 / 全挂告警 / 详情集数解析 / `$$$` 多源直链优选 / `from=` 提示 /
+  流解析 / 代理白名单 / 注册状态）；`tests/test_watch_channels.py` 覆盖
+  Chrome 指纹 CDN 走 curl_cffi、非指纹 Maccms CDN 走 httpx
 - **实测排除（2026-08-13）**：girigiri爱动漫（ani.girigirilove.com）详情/播放
   可播但**搜索被站点屏蔽**（返回「暂无」，suggest/ajax 超时）→ 不落地；
   次元城 cyc 403、vdm8 超时、dm530w Coming Soon、xfani 域名停放、nyadm 变成
   夸克网盘页 → 全部不可用
 - 已知限制：站点域名/镜像会轮换，`domains` 元组需随实测更新；个别镜像域
-  HTTP/证书不稳定（竞速已覆盖）；`jisuzy / bfzyapi / subozy` 已验证但未注册，
-  如需更多中文源可在 registry 里按同一基类一行注册
+  HTTP/证书不稳定（竞速已覆盖）；`bfzy.tv` / `by.bfzyapi.com` 已排除（403 /
+  返回 RSS 非 JSON）；`api.ffzyapi.com` 返回非 JSON，非凡资源改用 `ffzy.tv`
+  域名族接入
 
 ## 3. 接口契约
 
