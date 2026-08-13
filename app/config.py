@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     # e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:7891"
     HTTP_PROXY: str = ""
 
+    # E2E fixture mode (Playwright hermetic tests). When enabled the channel
+    # registry is replaced by a single deterministic FixtureChannel and the
+    # stream proxy whitelist additionally allows localhost, so tests can play
+    # a locally served webm through the real proxy without any external
+    # network. Never enable in production.
+    E2E_FIXTURE: bool = False
+    E2E_STREAM_BASE: str = "http://127.0.0.1:8901"
+
     # Rate limiting (seconds between requests)
     NYAA_RATE_LIMIT: float = 1.0
     BANGUMI_RATE_LIMIT: float = 0.5

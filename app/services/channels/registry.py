@@ -11,6 +11,7 @@ import logging
 import time
 from collections.abc import Iterable
 
+from app.config import settings
 from app.models import ChannelDetail, ChannelInfo, ChannelSearchResult, ChannelStream
 from app.services import response_cache
 from app.services.channels.age import AgeChannel
@@ -18,6 +19,7 @@ from app.services.channels.anilibria import AnilibriaChannel
 from app.services.channels.animeheaven import AnimeHeavenChannel
 from app.services.channels.base import ChannelError, ChannelProvider
 from app.services.channels.bilibili_channel import BilibiliChannel
+from app.services.channels.fixture import FixtureChannel
 from app.services.channels.gogoanime import GogoanimeChannel
 from app.services.channels.kitsu import KitsuChannel
 from app.services.channels.libvio import LibvioChannel
@@ -237,15 +239,21 @@ async def _detail_producer(provider: ChannelProvider, detail_ref: str) -> dict:
 
 #: Process-wide singleton used by the API layer.
 registry = ChannelRegistry()
-registry.register_all(
-    [
-        AgeChannel(),
-        LibvioChannel(),
-        ZzzfunChannel(),
-        AnilibriaChannel(),
-        AnimeHeavenChannel(),
-        GogoanimeChannel(),
-        BilibiliChannel(),
-        KitsuChannel(),
-    ]
-)
+if settings.E2E_FIXTURE:
+    # Hermetic E2E mode (docs/E2E_TESTING.md): replace the whole registry with
+    # the deterministic fixture provider so tests never depend on external
+    # sites, and nothing leaks real channels into the fixture run.
+    registry.register_all([FixtureChannel()])
+else:
+    registry.register_all(
+        [
+            AgeChannel(),
+            LibvioChannel(),
+            ZzzfunChannel(),
+            AnilibriaChannel(),
+            AnimeHeavenChannel(),
+            GogoanimeChannel(),
+            BilibiliChannel(),
+            KitsuChannel(),
+        ]
+    )

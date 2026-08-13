@@ -3,6 +3,7 @@
 import asyncio
 import logging
 
+from app.config import settings
 from app.services import anilist, image_cache, nyaa, schedule, subsplease
 from app.services import calendar as calendar_service
 from app.services import database as db
@@ -27,6 +28,9 @@ def _favorite_keywords(limit: int = 6) -> list[str]:
 
 
 async def warm_core_caches():
+    if settings.E2E_FIXTURE:
+        logger.info("E2E fixture mode: core cache warmup skipped (hermetic)")
+        return
     try:
         latest = await subsplease.search("", 1080, force_refresh=True)
         await schedule.get_schedule(force_refresh=True)
@@ -76,6 +80,9 @@ async def warm_favorite_queries():
 
 
 async def run_periodic_warmer():
+    if settings.E2E_FIXTURE:
+        logger.info("E2E fixture mode: periodic warmer disabled (hermetic)")
+        return
     favorite_tick = 0
     while True:
         await warm_core_caches()

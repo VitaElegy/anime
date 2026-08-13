@@ -64,12 +64,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("qBittorrent not available: %s (download features disabled)", e)
 
-    try:
-        await asyncio.wait_for(cache_warmer.warm_core_caches(), timeout=25)
-    except Exception as e:
-        logger.warning("Initial cache warmup skipped: %s", e)
-
-    warm_task = asyncio.create_task(cache_warmer.run_periodic_warmer())
+    if not settings.E2E_FIXTURE:
+        try:
+            await asyncio.wait_for(cache_warmer.warm_core_caches(), timeout=25)
+        except Exception as e:
+            logger.warning("Initial cache warmup skipped: %s", e)
+        warm_task = asyncio.create_task(cache_warmer.run_periodic_warmer())
     room_cleanup_task = asyncio.create_task(watch_room.run_periodic_room_cleanup())
 
     yield
