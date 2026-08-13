@@ -84,6 +84,14 @@
 | **Consumet 官方** | 聚合流 API | ❌ 官方不再直接提供（301/500） | 可参考其 provider 模式（GogoanimeProvider），不自建 |
 | **Nyaa / Mikan / AnimeGarden / SubsPlease** | BT 聚合 | ✅ 已接入现有四源 | 属于下载/聚合，不是在线渠道，不重复实现 |
 | **Bangumi**（api.bgm.tv） | 元数据 | ⚠️ 本机不可达（P0-1 已快速失败兜底） | 元数据主源保持，备选库提供第二来源 |
+| **AnimeXin**（animexin.dev，原 animexin.vip） | 可播（Dailymotion HLS，国漫/多语言字幕） | ✅ 全链路实测可播（2026-08-13：搜索→详情→集数→embed→HLS master/子清单均 200） | **P0 可播备选（国漫）**：AnimeStream WP 模板；embed 以 Dailymotion 为主；DM CDN 需 curl_cffi `chrome124` 指纹（显式例外 §2.6） |
+| **Goyabu**（goyabu.io） | 可播（WP REST API，葡语配音） | ⚠️ 代理可访问（200），搜索 API 需 nonce；直连 403 | 暂缓：仅葡语配音，对中文用户价值低，保留记录 |
+| **Bde4**（bde4.icu） | 可播（m3u8，综合影视非动漫专站） | ⚠️ 存活但 JS 挑战（JWT `ch=1` + `sid` cookie）+ SSL 抖动 | 暂缓：非动漫专站、挑战不稳定，保留记录 |
+| **ChineseAnime**（chineseanime.vip） | 可播（AnimeStream 模板） | ❌ 域名已停靠（跳 `router.parklogic.com`） | 确认失效，保留记录 |
+| **HahoMoe**（haho.moe） | 可播 | ❌ 实为 Hentai 站，非一般动漫 | 排除，保留记录 |
+| **Bimibimi**（api.tianbo17.com） | 可播（中文） | ❌ API 已变为 HTML/混淆 JS 壳（2026-08-13） | 确认失效，保留记录 |
+| **LuciferDonghua / DonghuaStream / Kawaiifu / TioDonghua / Sudatchi** | 可播（国漫站） | ❌ 403 / 521 / 000（2026-08-13） | 不可用，保留记录 |
+| **Afang / K1080 / 4Kya / Eyunzhu**（Anime-API 中文源） | 可播（2021 中文聚合） | ❌ 全部 000 失联（2026-08-13） | 确认失效，保留记录 |
 
 ### 2.1 Kitsu 接口速查（落地依据）
 
@@ -225,6 +233,50 @@ Miruro（miruro.tv）是开源前端（VitaElegy 参考 walterwhite-69/Miruro-AP
   `split(":", 2)` 解析 provider/category，再取 `anilist_id` 与 decoded_id）。
 
 
+### 2.6 AnimeXin 接口速查（落地依据，2026-08-13 实测可播）
+
+AnimeXin（animexin.dev，原 animexin.vip 已 301 到 .dev）是国漫（donghua）为主的
+WordPress 站，使用 AnimeStream 模板（参考 `aniyomi-extensions-archive` 的
+`lib-multisrc/animestream` 与 `src/all/animexin` 扩展）。它补上了现有渠道
+「国漫/多语言字幕」空白：搜索/详情/集数走站点 HTML，流以 Dailymotion embed 为主
+（实测两集均为 DM；其余 embed 类型见下）。
+
+- 搜索：`GET https://animexin.dev/page/1/?s=<kw>`
+  - 返回 HTML；命中卡片 `div.listupd article a.tip`（`href`=详情页 URL、
+    `img` 的 `src`/`alt`=封面/标题），详情页形如 `/anime/<slug>/`
+  - 中文关键词直接可命中（站内收录国漫罗马音/英文名），无需 registry 扩展
+- 详情+集数：`GET https://animexin.dev/anime/<slug>/`
+  - `<title>` 标题（去 ` - AnimeXin` 后缀）、`img` 封面、`.entry-content` 简介
+  - 集数锚点：`div.eplister > ul > li > a`，`href`=集数页 URL
+    （如 `/supreme-god-emperor-episode-626-indonesia-english-sub/`），
+    文本含集号（如 `Episode 626`）；`episode_ref` = 集数页完整 URL
+  - 页面较大（300–750KB），共享 httpx 超时 8s 可能不足——本渠道需放宽
+    `get_detail` / `get_streams` 单请求超时（显式例外，见下）
+- 流：`GET <episode_url>` → 取首个 `iframe[src~=.]` 的 src
+  - 若为 Dailymotion embed（`https://www.dailymotion.com/embed/video/<id>`）：
+    1. `GET` embed 页 → 从 `dmInternalData` 取 `"ts":<ts>` 与 `"v1st":"<v1st>"`
+    2. `GET https://www.dailymotion.com/player/metadata/video/<id>?locale=en-US
+       &dmV1st=<v1st>&dmTs=<ts>&is_native_app=0`
+    3. 取 `qualities.auto[0].url` = HLS master（实测 720/480/380/240 四档）
+  - 若为 dood / gdriveplayer / youtube / ok.ru / vidstreaming 等其他 embed：
+    **v1 不实现**，抛出带 embed URL 的明确 `ChannelError`（前端可跳官方 embed）
+- **curl_cffi 显式例外条款**（本文件在此先声明，再实现）：AnimeXin 站本身
+  共享 httpx 可用（实测 200）；但 Dailymotion embed/metadata/CDN 需要：
+  - `curl_cffi.AsyncSession(impersonate="chrome124")`（**较新的 chrome 指纹被
+    DM CDN 以 403 拒绝**，chrome124/safari 实测 200）+ Clash 7892 代理
+    （系统 curl/LibreSSL 直连握手 SSL_ERROR_SYSCALL，curl_cffi 稳定）
+  - 流请求头：`Referer: https://www.dailymotion.com/` + `Origin: ...`
+  - 这是 CHANNEL_ARCHITECTURE §1.1「Provider 不自建 HTTP 客户端」的
+    **文档先声明例外**（同 §2.5 Miruro）；AnimeXin 站点请求本身仍走共享 httpx
+  - **超时例外**：详情/集数/embed 页 300–750KB，共享 httpx 8s 不够；
+    本渠道 `get_detail` / `get_streams` 允许单请求 20s（文档先声明）
+- **v1 落地范围（本次）**：`search` + `get_detail` + `get_streams`（Dailymotion
+  提取），`external=False`、`supports_search/detail/streams=True`、
+  `language="en"`（英/印尼字幕）、`priority=56`（可播备选：AnimeHeaven 55 之后、
+  Miruro 58 之前，因为国漫内容与现有主力互补）。
+- 已知限制：站点无中文标题（英文/罗马音，registry 扩展后命中）；页面大且慢
+  （搜索 ~7s、详情 ~10s）；Dailymotion 依赖第三方 embed，个别集可能换源。
+
 ## 3. 接口契约
 
 备选源**不新增 Pydantic 模型**，直接复用 CHANNEL_ARCHITECTURE.md §3 的
@@ -302,6 +354,10 @@ class ChannelInfo(BaseModel):
    参考实现（`_reference/AnimeKAI-API`）依赖的 enc-dec.app 仍存活但已无站点可查，
    保留记录不再投入。
 
+10. ~~AnimeXinChannel~~（2026-08-13 落地）：可播 HLS 备选（国漫/多语言字幕），
+   `external=False`、`priority=56`，AnimeStream WP 模板 + Dailymotion HLS；
+   curl_cffi `chrome124` 例外（§2.6 已先声明）。
+
 
 ## 8. 移植声明
 
@@ -312,3 +368,7 @@ class ChannelInfo(BaseModel):
 - AnimePahe 思路参考 [Kylart/Animepahe-API](https://github.com/Kylart/Animepahe-API)
   （MIT），落地时在文件头保留版权声明。
 - ReAnime.to 思路参考本地 `~/work/Project/_reference/ReAnime.to-API`，落地时署名。
+- AnimeXin 端点/选择器/提取流程参考本地
+  `~/work/Project/_reference/aniyomi-extensions-archive`（Apache-2.0）：
+  `lib-multisrc/animestream` 的 AnimeStream 模板、`src/all/animexin` 扩展、
+  `lib/dailymotion-extractor`；本实现为独立实现，仅参考端点/选择器/流程，不复制代码。
