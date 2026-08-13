@@ -142,7 +142,7 @@ make build         # 前端生产构建（tsc + vite build）
 
 | 检查项 | 命令 | 当前状态 |
 |---|---|---|
-| 后端单测 | `pytest tests/ -q` | 108 passed |
+| 后端单测 | `pytest tests/ -q` | 144 passed |
 | 后端 Lint | `ruff check app/ tests/` | ✅ |
 | 前端单测 | `npm test -- --run`（frontend/） | 13 passed |
 | 前端 Lint | `npm run lint`（frontend/） | ✅ |

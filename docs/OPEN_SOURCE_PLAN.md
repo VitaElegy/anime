@@ -9,7 +9,7 @@
 |---|---|
 | 技术栈 | FastAPI + SQLite / React 19 + Vite + TS + Tailwind |
 | 功能 | 搜索（中文化、4 源聚合）、qBittorrent 下载、HLS ABR 转码、同看（SSE + 好友/私信/邀请）、账号体系、日历/收藏/爬取 |
-| 后端测试 | 128 passed（.venv-test 实测） |
+| 后端测试 | 144 passed（.venv-test 实测） |
 | 前端测试 | 13/13 passed（4 个测试文件，vitest） |
 | Git | 工作区干净，本地与远程 master 同步（2026-08-13） |
 | 远程分支 | `master` + `feature/watch-party`（12 提交未合入，与本地实现重复） |
@@ -62,7 +62,8 @@
 
 ## 三、整改路线（执行顺序）
 
-> 2026-08-13 进度：P0 已全清（仓库卫生/元数据/CI/前端测试/venv）；P1 已落地
+> 2026-08-13 进度：P0 已全清（仓库卫生/元数据/CI/前端测试/venv）；P1 已落地；
+> 同日新增 Hermetic Playwright E2E（7 passed / 1 live skipped，docs/E2E_TESTING.md）
 > （pyproject/Makefile/docker-compose/README 重写）；P2 中邀请 UI、房主权限、
 > 心跳、AnimeGarden 文档同步已完成，另新增在线渠道 P0 修复（Bangumi 快速失败、
 > 离线关键词扩展）与备选资源库 v1（Kitsu，见 docs/RESOURCE_BACKUP_PLAN.md）。

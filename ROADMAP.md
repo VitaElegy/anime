@@ -6,8 +6,9 @@ along the way so contributors don't re-litigate them.
 ## Current status
 
 - Core (search / download / library / watch party / accounts) is functional.
-- Backend tests: green (128 passed). Frontend tests: green (13 passed, kept
-  green in CI).
+- Backend tests: green (144 passed). Frontend tests: green (13 passed, kept
+  green in CI). Hermetic E2E: green (7 passed / 1 live skipped, Playwright,
+  docs/E2E_TESTING.md).
 - Deployment: bare-metal via systemd + Nginx; Docker Compose available for dev.
 - Search fast-fail (2026-08-13): Bangumi unreachable no longer stalls first
   searches (~60s → ≤3s with negative cache + circuit breaker); channel keyword
@@ -72,5 +73,6 @@ Reserved fields to enable:
 ### Engineering
 
 - [ ] Publish container images (backend + frontend) for `docker compose up` prod
-- [ ] Add end-to-end tests (Playwright) covering search → download → watch
+- [x] Add end-to-end tests (Playwright) covering search → download → watch
+      (landed 2026-08-13: fixture mode + 7 hermetic cases, docs/E2E_TESTING.md)
 - [ ] Add GitHub Pages / demo deployment of the frontend
