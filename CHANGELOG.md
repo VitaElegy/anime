@@ -8,7 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Maccms（AppleCMS）资源站家族直链 HLS 备份渠道（docs/RESOURCE_BACKUP_PLAN.md
+- AllAnime (mkissa) backup channel v2（docs/RESOURCE_BACKUP_PLAN.md §2.4）：从
+  仅外链升级为**可播放**备选渠道。GraphQL 详情集数（sub/dub/raw 三线路），
+  播放流走 aaReq AES-256-GCM 证明令牌（per-epoch 密钥由
+  `scripts/allanime_keygen` Node 子进程引导 mkissa client-crypto 分片推导，
+  180s TTL 缓存 + 失败自动换新 key 重试），解密 tobeparsed 后得到
+  **Yt-mp4（fast4speed.rsvp 直链 mp4）/ Mp4upload（embed 页解析直链 mp4）**
+  两种可播源，均带 Referer 由 StreamProxy 白名单转发；`priority=61`、
+  `language=en`，2026-08-13 实测搜索/详情/播放全链路可用。
+- （AppleCMS）资源站家族直链 HLS 备份渠道（docs/RESOURCE_BACKUP_PLAN.md
   §2.8）：标准 JSON API `GET /api.php/provide/vod`，中文关键词直搜、详情集数
   直出、HLS master 直链；**镜像域名并发竞速**（单域 5s / 总 7.5s，首个成功
   返回），单镜像挂掉不拖垮渠道。落地 360资源（360zy）/ iKun资源（ikunzy）/

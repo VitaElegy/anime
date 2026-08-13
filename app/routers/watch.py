@@ -62,6 +62,10 @@ _ALLOWED_STREAM_HOSTS = (
     "shiora.site",
     "norami.top",
     "lostproject.club",
+    # AllAnime direct mp4 CDNs (Yt-mp4 fast4speed.rsvp + mp4upload.com;
+    # both need their own Referer, carried by the proxy — docs §2.4)
+    "fast4speed.rsvp",
+    "mp4upload.com",
     # Maccms 资源站家族直链 HLS CDN（360资源 maowushi / iKun bfikuncdn /
     # 樱花资源 wgslsw + yhzybf 分片域；极速 jisuzyv+jisuts /
     # 速播 xluuss+xlzyd+subokk（subokk 为速播当前 master 域，分片仍在 xlzyd）/
@@ -87,7 +91,6 @@ _ALLOWED_STREAM_HOSTS = (
     "ibyteimg.com",
     "ipstatp.com",
 )
-
 
 
 def _host_allowed(url: str) -> bool:
@@ -239,7 +242,9 @@ def _stream_response(
         if content_range:
             out_headers["Content-Range"] = content_range
     out_headers["Cache-Control"] = "no-cache"
-    return Response(content=body, status_code=upstream.status_code, media_type=content_type, headers=out_headers)
+    return Response(
+        content=body, status_code=upstream.status_code, media_type=content_type, headers=out_headers
+    )
 
 
 async def _fetch_chrome_fp(
@@ -351,7 +356,11 @@ async def channel_detail(channel: str, ref: str = Query(..., description="detail
         return ChannelDetail(channel=channel, title="")
 
 
-@router.get("/{channel}/streams", response_model=list[ChannelStream], summary="Resolve playable streams for an episode")
+@router.get(
+    "/{channel}/streams",
+    response_model=list[ChannelStream],
+    summary="Resolve playable streams for an episode",
+)
 async def channel_streams(channel: str, ref: str = Query(..., description="episode_ref")):
     try:
         return await registry.streams(channel, ref)

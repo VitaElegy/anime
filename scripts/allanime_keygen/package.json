@@ -1,0 +1,10 @@
+{
+  "name": "allanime-keygen",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AllAnime/mkissa per-epoch AES key deriver (client-crypto chunk bootstrap). Invoked as a subprocess by the allanime channel provider.",
+  "type": "commonjs",
+  "dependencies": {
+    "undici": "^8.10.0"
+  }
+}
