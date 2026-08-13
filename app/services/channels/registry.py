@@ -36,6 +36,7 @@ from app.services.channels.maccms import (
     Ziyuan360Channel,
 )
 from app.services.channels.miruro import MiruroChannel
+from app.services.channels.reanime import ReAnimeChannel
 from app.services.channels.shikimori import ShikimoriChannel
 from app.services.channels.zzzfun import ZzzfunChannel
 from app.services.keyword_expand import expand_keywords, normalize_title_key
@@ -303,5 +304,6 @@ else:
             AnimeXinChannel(),
             AllAnimeChannel(),
             ShikimoriChannel(),
+            ReAnimeChannel(),
         ]
     )
