@@ -382,7 +382,7 @@ function AnimeSection({
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {list.map((a) => (
         <button
-          key={`${a.source}-${a.id}`}
+          key={`${a.source}-${a.id}-${a.title}`}
           onClick={() => onOpen(a)}
           className="group flex items-stretch text-left bg-black/30 hover:bg-white/5 border border-white/10 hover:border-sky-400/50 rounded-2xl overflow-hidden transition-all duration-300"
         >

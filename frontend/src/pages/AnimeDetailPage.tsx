@@ -127,14 +127,21 @@ export default function AnimeDetailPage() {
       } catch {
         infos = []
       }
+      // 按优先级逐个尝试：rawTitle（英文名）→ title（中文名）→ 元数据别名。
+      // 取第一个有命中的 query——拼音/无意义 rawTitle（如渠道 fallback 卡片）
+      // 会被跳过，中文标题仍能命中渠道聚合。
       const candidates = [rawTitleParam, titleParam, metadata?.name_cn, metadata?.name].filter((v): v is string => Boolean(v))
-      const query = candidates[0] || ''
+      let query = ''
       let hits: ChannelSearchResult[] = []
-      if (query) {
+      for (const candidate of candidates) {
         try {
-          hits = await watchSearch(query)
+          hits = await watchSearch(candidate)
         } catch {
           hits = []
+        }
+        if (hits.length > 0) {
+          query = candidate
+          break
         }
       }
       // Deferred so the effect body stays side-effect-free (react-hooks/set-state-in-effect).
@@ -626,7 +633,7 @@ export default function AnimeDetailPage() {
                       const isExpanded = expandedChannel === hit.channel
                       const isExternal = Boolean(info?.external)
                       return (
-                        <div key={`${hit.channel}-${hit.detail_ref}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-sm transition-all">
+                        <div key={`${hit.channel}-${hit.detail_ref}-${hit.title}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-sm transition-all">
                           <button
                             onClick={() => void handleExpandChannel(hit)}
                             className="flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-white/5"
