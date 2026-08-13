@@ -57,7 +57,9 @@ _ALLOWED_STREAM_HOSTS = (
     "megap.mikora.top",
     "ncdn.mewstream.buzz",
     "megap.akirax.buzz",
+    "akirax.buzz",
     "shiora.top",
+    "shiora.site",
     "norami.top",
     "lostproject.club",
     # Gogoanime segment CDNs (real MPEG-TS disguised as .jpg/.html/...)
