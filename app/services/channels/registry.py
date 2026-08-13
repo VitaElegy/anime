@@ -16,6 +16,7 @@ from app.models import ChannelDetail, ChannelInfo, ChannelSearchResult, ChannelS
 from app.services import response_cache
 from app.services.channels.age import AgeChannel
 from app.services.channels.allanime import AllAnimeChannel
+from app.services.channels.anikoto import AnikotoChannel
 from app.services.channels.anilibria import AnilibriaChannel
 from app.services.channels.animeheaven import AnimeHeavenChannel
 from app.services.channels.animexin import AnimeXinChannel
@@ -278,6 +279,7 @@ else:
             ZzzfunChannel(),
             AnilibriaChannel(),
             AnimeHeavenChannel(),
+            AnikotoChannel(),
             GogoanimeChannel(),
             BilibiliChannel(),
             KitsuChannel(),
