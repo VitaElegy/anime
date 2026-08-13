@@ -35,7 +35,7 @@ CI 里可复现，不依赖任何外部网站。
 |---|---|---|---|
 | 核心 UX 旅程 | `e2e/tests/core-journey.spec.ts` | 中文搜 → 卡片 → 渠道 → 集数 → 实际播放（`video.readyState >= 2`） | 元数据层 mock（Bangumi/AniList/Bilibili/auth），watch 层真实后端 + 真实代理 |
 | 后端契约 | `e2e/tests/backend-fixture.spec.ts` | channels 只含 fixture、中文搜索、detail 3 集、streams 本地 webm、代理 Range 206 + WebM magic、非白名单 403 | 无外网 |
-| 真实源 live（可选） | `e2e/tests/live-sources.spec.ts` | 真实 AnimeHeaven 源搜索→detail→streams→代理 | 外网；`ANIME_E2E_LIVE=1` 才跑，默认 skip |
+| 真实源 live（可选） | `e2e/tests/live-sources.spec.ts` | 真实 AnimeHeaven 源搜索→detail→streams→代理 Range 206；真实 **Anikoto** HLS 源搜索→detail→streams→代理 master/子清单/TS 分片（sync `47 40`） | 外网；`ANIME_E2E_LIVE=1` 才跑，默认 skip |
 
 ## 4. 本地运行
 
@@ -52,7 +52,7 @@ npx playwright test --headed     # 有头模式观察
 # 然后指定 live 后端再跑（注意：playwright 会自动另起 fixture 后端 :8000，
 # 两者互不影响）：
 ANIME_E2E_LIVE=1 ANIME_E2E_LIVE_BACKEND=http://127.0.0.1:8001 \
-  npx playwright test tests/live-sources.spec.ts   # 真实源 smoke
+  npx playwright test tests/live-sources.spec.ts   # 真实源 smoke（AnimeHeaven mp4 + Anikoto HLS 两条）
 ```
 
 Playwright 会自动拉起 3 个 webServer：
