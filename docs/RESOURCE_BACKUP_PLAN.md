@@ -1,0 +1,170 @@
+# 资源备选库（Backup Resource Library）规范
+
+> 状态：v1.0 生效稿 · 2026-08-13
+> 本文件是「备选资源库」功能的**唯一实现依据**，是
+> [CHANNEL_ARCHITECTURE.md](./CHANNEL_ARCHITECTURE.md) 的扩展角色。
+> 所有代码改动必须先满足本文定义的角色边界与接口契约；若需调整契约，
+> 先改本文并注明原因。
+
+## 0. 为什么需要备选库
+
+现有渠道（Anilibria / Gogoanime / Bilibili）是**在线播放**主力，但它们都是
+外部站点：域名会漂移、反爬会升级、区域会封锁。用户的核心承诺是
+「中文搜 → 卡片 → 渠道 → 集数 → **实际观看**」，这个承诺不能被单一站点
+的宕机绑架。备选资源库的目标：
+
+1. 当主力渠道全部不可用时，仍有**可播放**或**可跳转官方**的兜底来源；
+2. 为元数据（封面/简介/中文名）提供独立于 Bangumi 的第二来源；
+3. 所有来源都遵循统一 `ChannelProvider` 契约，前端零改动即可接入。
+
+## 1. 角色总览
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                   Backup Resource Library                    │
+│  (备选资源库 — 新增角色，不是新系统，是 ChannelProvider 的     │
+│   一类实现：metadata-only / external / stream-capable)        │
+└────────────────────────────────────────────────────────────┘
+```
+
+备选资源库**不新建抽象**，复用现有角色：
+
+| 现有角色 | 备选库如何复用 |
+|---|---|
+| `ChannelProvider`（§1.1） | 每个备选源都是一个 Provider：`search` / `get_detail` / `get_streams` |
+| `ChannelRegistry`（§1.8） | 自动获得健康检查、熔断、缓存、聚合搜索 |
+| `SearchAggregator`（§1.2） | 备选源自动参与中文关键词扩展后的聚合搜索 |
+| `EpisodeResolver`（§1.3） | 备选源实现 `get_detail` 返回集数分组 |
+| `StreamResolver`（§1.4） | 可播源实现 `get_streams`；仅外链源不实现（`external=True`） |
+| `Renderer`（§1.5） | **不感知**来源差异，只拿到流就播放 |
+| `StreamProxy`（§1.6） | 可播源的分片/清单照常走代理；外链源直接跳官方 |
+
+### 1.1 BackupSource（备选源）职责
+
+**职责**（针对一个外部资源站）：
+- 按 `ChannelProvider` 契约实现 `search(keyword, page)` → `ChannelSearchResult[]`
+- 按契约实现 `get_detail(detail_ref)` → `ChannelDetail`（含集数分组）
+- 若该源可播：实现 `get_streams(episode_ref)` → `ChannelStream[]`
+- 若该源仅外链：`external=True`，实现 `external_url(detail_ref)` 返回官方跳转
+- 必须携带 `language` 元信息（`zh` / `en` / `ru` / `zh-en`）供前端排序
+
+**不负责**（禁止做）：
+- ❌ 不聚合、不去重、不排序（那是 SearchAggregator）
+- ❌ 不渲染、不播放（那是 Renderer / 前端）
+- ❌ 不缓存、不熔断（那是 Registry / Cache）
+- ❌ 不自己实现重试风暴：超时由公共 HTTP 客户端控制（默认 8s，见 §6）
+
+### 1.2 与主力渠道的关系
+
+- 备选源与主力源**平级**注册在同一个 `ChannelRegistry`，没有「主备切换」
+  的特殊代码路径——这正是接口化的收益：Registry 只按健康状态分发。
+- 前端渠道选项卡按 `priority` 排序（主力在前、备选在后），备选源
+  `priority` 恒低于主力源。
+- 备选源失败 = 普通渠道失败：连续 3 次熔断冷却 120s，自动跳过，
+  用户无感知（CHANNEL_ARCHITECTURE.md §6.2）。
+
+## 2. 候选源清单（2026-08-13 实测）
+
+> 实测走本机 Clash 7892 代理。`✅` = 本轮实测可用；`⚠️` = 不稳定/需绕行；
+> `❌` = 已确认不可用（保留记录，避免未来重复调研）。
+
+| 源 | 类型 | 实测 | 结论 |
+|---|---|---|---|
+| **Kitsu**（kitsu.io/api/edge） | 元数据 + 集数 + 官方外链 | ✅ HTTP 200，4.4s 偏慢 | **第一优先落地**：`zh_cn` 中文标题、封面、简介、评分、集数（number/title/thumbnail）、Crunchyroll streaming-links |
+| **Shikimori**（shikimori.one/api） | 元数据（英/俄） | ✅ 301 → shikimori.io → 200 | 第二优先（元数据备用）：搜索相关性差（Frieren 首条是续作），无中文名 |
+| **AniAPI**（api.aniapi.com/v1） | 元数据 + 流 | ⚠️ 2026-08-13 起返回 JS 挑战页（JWT redirect），此前 200 | 暂缓：需 JS 能力客户端或 cookie，留作「挑战解除后优先」 |
+| **Jikan**（api.jikan.moe/v4） | 元数据 | ❌ 504（上游 MyAnimeList 拒绝） | 不可用，保留记录 |
+| **AnimePahe**（animepahe.ru/api） | 可播（m3u8+Kwik） | ⚠️ 301 → animepahe.su，Cloudflare 首页 | 需 cloudscraper/CF 绕过（参考 `_reference/Animepahe-API`），P2 |
+| **ReAnime.to** | 可播（flixcloud HLS AES-256） | 参考实现存在（`_reference/ReAnime.to-API`） | P2：AES 解密链路已在参考项目验证，移植成本高 |
+| **HiAnime / Zoro** | 可播 | ❌ 走代理超时（000） | 不可用，保留记录 |
+| **Consumet 官方** | 聚合流 API | ❌ 官方不再直接提供（301/500） | 可参考其 provider 模式（GogoanimeProvider），不自建 |
+| **Nyaa / Mikan / AnimeGarden / SubsPlease** | BT 聚合 | ✅ 已接入现有四源 | 属于下载/聚合，不是在线渠道，不重复实现 |
+| **Bangumi**（api.bgm.tv） | 元数据 | ⚠️ 本机不可达（P0-1 已快速失败兜底） | 元数据主源保持，备选库提供第二来源 |
+
+### 2.1 Kitsu 接口速查（落地依据）
+
+- 搜索：`GET https://kitsu.io/api/edge/anime?filter[text]=<kw>&page[limit]=N`
+  - 返回 `data[].attributes`：`titles.zh_cn / titles.en / canonicalTitle`、
+    `posterImage.small`、`synopsis`、`episodeCount`、`averageRating`、
+    `subtype`、`status`
+- 集数：`GET https://kitsu.io/api/edge/episodes?filter[media_id]=<id>&page[limit]=N&page[offset]=0`
+  - 返回 `data[].attributes`：`number`、`canonicalTitle`、`thumbnail.small`、
+    `airdate`、`length`
+- 官方外链：`GET https://kitsu.io/api/edge/anime/<id>/streaming-links`
+  - 返回 `data[].attributes.url`（Crunchyroll 等），`subs` / `dubs`
+- 注意：Kitsu 的 `filter[text]` 对中文原文匹配差，但**中文关键词扩展
+  （CHINESE_TITLE_MAP → 英文/罗马音）后命中率好**，且结果自带 `zh_cn` 标题，
+  恰好补全「中文显示」体验。Kitsu 搜索与 Bangumi 互为备份。
+- **v1 落地范围（2026-08-13）**：`search` + `external_url`
+  （`https://kitsu.io/anime/{id}`，该页列出 Crunchyroll 等官方授权入口）。
+  集数/streaming-links 端点**已探明可用**（§2.1），但当前 external 前端流
+  只跳官方页、不渲染集数，故 v1 不实现 `get_detail`；待前端支持
+  external 渠道集数浏览（P2）时再启用，接口契约不变。
+
+## 3. 接口契约
+
+备选源**不新增 Pydantic 模型**，直接复用 CHANNEL_ARCHITECTURE.md §3 的
+`ChannelInfo / ChannelSearchResult / ChannelDetail / ChannelStream`，仅补充：
+
+```python
+class ChannelInfo(BaseModel):
+    ...
+    priority: int = 100          # 新增：数字越小越靠前；主力 0-50，备选 60+
+    language: str = "zh"         # 已有："zh" | "ja" | "en" | "ru" | "zh-en"
+```
+
+`ChannelSearchResult.title` 规则（备选源专用）：
+- 有 `zh_cn` → 用中文标题；否则 `canonicalTitle`；再否则 `titles.en`。
+- `title_original` 填英文/罗马音原名。
+- `cover_url` 用 `posterImage.small`（小图省流量，Renderer 不放大图）。
+
+`ChannelDetail.groups[]` 规则：
+- 按 `seasonNumber` 分组（如「第一季」「第二季」），每组内含该季集数。
+- `ChannelEpisode.title` = 「第 N 集 · 英文标题」（无标题时只留「第 N 集」）。
+- `episode_ref` = Kitsu episode id（不透明引用）。
+
+`ChannelStream` 规则：
+- 可播源照常返回 `hls/mp4` 流；**外链源不返回 streams**（`external=True`，
+  前端渲染「前往官方观看」按钮，跳 `external_url`）。
+
+## 4. 健康与降级（复用，不新增）
+
+- 走 `ChannelRegistry`：连续 3 次失败 → 熔断 120s（§1.8）。
+- Kitsu 偏慢（~4s）但稳定：搜索 TTL 300s、详情 600s、外链 120s（§1.7），
+  聚合搜索 8s 硬超时兜底（§6.1）。
+- 备选源**不允许**影响聚合总时长：超过 8s 的结果被丢弃，健康渠道照常返回。
+
+## 5. 前端（零改动原则）
+
+- 渠道选项卡已按 `list_channels()` 渲染；备选源自动出现。
+- 外链源：前端现有 `external` 分支（如 Bilibili）自动渲染「前往官网」。
+- 可播源：复用 `ChannelPlayer`（hls.js → StreamProxy），Renderer 不感知来源。
+- **前端无任何备选库专用代码**——这是接口化的验收标准。
+
+## 6. 测试要求（与 CHANNEL_ARCHITECTURE §7 一致）
+
+- 每个备选源用**本地 fixture**（Kitsu JSON 样本）做解析单测：
+  - 搜索命中 → `zh_cn` 标题 / 封面 / detail_ref 正确
+  - 详情 → 按季分组、集数排序、episode_ref 不透明
+  - 外链 → streaming-links 首条 URL 返回
+  - 异常 JSON / 空结果 → 抛 `ChannelError` 或返回空，不崩溃
+- Registry 聚合测试已覆盖多 Provider 并行；备选源注册一行 + 断言
+  `list_channels()` 含新源即可。
+- 真实 API E2E（可选，网络波动时跳过）：`kitsu.io` 搜索 `Frieren` 命中。
+- 每轮测试后：`ps aux | awk '$8 ~ /^Z/'` 必须无输出；无本项目残留进程。
+
+## 7. 落地顺序
+
+1. **KitsuChannel**（本次）：元数据 + 集数 + 官方外链，`external=True`，
+   `priority=60` —— 风险最低、收益最高（中文标题兜底 + 官方观看入口）。
+2. Shikimori 元数据（P2）：仅 search/detail，英文/俄文显示，备用。
+3. AnimePahe 可播源（P2）：cloudscraper 绕过 CF，需引入依赖并评估稳定性。
+4. ReAnime.to 可播源（P2）：参考实现 AES 解密，移植 + 充分测试。
+5. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。
+
+## 8. 移植声明
+
+- Kitsu 官方 API（https://kitsu.io/api/edge），开放无需鉴权，本文为独立实现。
+- AnimePahe 思路参考 [Kylart/Animepahe-API](https://github.com/Kylart/Animepahe-API)
+  （MIT），落地时在文件头保留版权声明。
+- ReAnime.to 思路参考本地 `~/work/Project/_reference/ReAnime.to-API`，落地时署名。
