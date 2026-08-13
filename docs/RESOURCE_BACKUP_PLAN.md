@@ -85,6 +85,7 @@
 | **Nyaa / Mikan / AnimeGarden / SubsPlease** | BT 聚合 | ✅ 已接入现有四源 | 属于下载/聚合，不是在线渠道，不重复实现 |
 | **Bangumi**（api.bgm.tv） | 元数据 | ⚠️ 本机不可达（P0-1 已快速失败兜底） | 元数据主源保持，备选库提供第二来源 |
 | **AnimeXin**（animexin.dev，原 animexin.vip） | 可播（Dailymotion HLS，国漫/多语言字幕） | ✅ 全链路实测可播（2026-08-13：搜索→详情→集数→embed→HLS master/子清单均 200） | **P0 可播备选（国漫）**：AnimeStream WP 模板；embed 以 Dailymotion 为主；DM CDN 需 curl_cffi `chrome124` 指纹（显式例外 §2.6） |
+| **Anikoto**（anikoto.net） | 可播（HiAnime/Zoro 克隆，megaplay/vidtube HLS） | ✅ 全链路实测可播（2026-08-13：搜索→详情→集数→server→megaplay/vidtube 双 CDN master/子清单/分片均 200） | **P0 可播备选（英文索引）**：无 CF、无解密；megaplay 分片为 252B PNG 前缀 + 真 MPEG-TS（代理 SegmentStrip 可播）；vidtube→akirax 分片为 `.jpg` 后缀真 TS；Kiwi Mapper 仅 server-code 路径可用（§2.7） |
 | **Goyabu**（goyabu.io） | 可播（WP REST API，葡语配音） | ⚠️ 代理可访问（200），搜索 API 需 nonce；直连 403 | 暂缓：仅葡语配音，对中文用户价值低，保留记录 |
 | **Bde4**（bde4.icu） | 可播（m3u8，综合影视非动漫专站） | ⚠️ 存活但 JS 挑战（JWT `ch=1` + `sid` cookie）+ SSL 抖动 | 暂缓：非动漫专站、挑战不稳定，保留记录 |
 | **ChineseAnime**（chineseanime.vip） | 可播（AnimeStream 模板） | ❌ 域名已停靠（跳 `router.parklogic.com`） | 确认失效，保留记录 |
@@ -290,6 +291,61 @@ WordPress 站，使用 AnimeStream 模板（参考 `aniyomi-extensions-archive` 
   页面大且慢（搜索 ~7s、详情 ~10s，走共享 httpx 8s 需注意聚合 8s 上限）；
   Dailymotion 依赖第三方 embed，个别集可能换源。
 
+### 2.7 Anikoto 接口速查（落地依据，2026-08-13 实测可播）
+
+Anikoto（anikoto.net）是 HiAnime/Zoro 风格克隆（参考
+`~/work/Project/_reference/Anivault-Scraper/src/scrapers/anikoto.ts`，SH0MIK；
+仓库未声明 License，本实现为独立实现，仅参考端点/选择器，不复制代码）。
+搜索/详情/集数页无 Cloudflare，共享 httpx + Clash 代理即可；流为 HLS 双 CDN。
+
+- 搜索：`GET https://anikoto.net/filter?keyword=<kw>`
+  - 返回 HTML；命中块 `div#list-items.ani.items > div.item`，标题锚点
+    `a.name.d-title`（`href`=`/watch/<slug>/ep-N`、`data-jp`=罗马音原名、
+    文本=英文名），封面取块内首张 `img[src]`；slug 从 `/watch/<slug>` 提取
+  - 实测中文关键词依赖 registry 的中文→英文扩展表（同 AnimeXin §2.6 已知限制）
+- 详情+集数：`GET https://anikoto.net/watch/<slug>`
+  - `<h1 itemprop="name">` 标题（`data-jp`=罗马音原名）、`og:image`/`img[itemprop=image]`
+    封面、`.synopsis .content` 简介、`#watch-main[data-id]` 番剧 id
+  - 集数通常**不在内联**：AJAX `GET /ajax/episode/list/<data-id>` → JSON
+    `result` HTML；集数锚点 `a[data-num][data-id][data-mal][data-timestamp][data-ids]`
+    + `span.d-title` 集标题
+  - `episode_ref` 内部约定：`{slug}::{num}::{data_ids}::{mal}::{timestamp}::{ep_id}`
+- server 列表：`GET /ajax/server/list?servers=<data_ids>`
+  - 返回 `<li data-ep-id data-cmid data-sv-id data-link-id>名称</li>`；
+    sub/dub 各一份（同名成对出现），按 `(sv, link)` 去重
+- embed 解析：`GET /ajax/server?get=<link-id>&sv=<sv-id>` → JSON
+  `result.url`（如 `https://megaplay.buzz/stream/s-2/<id>/sub`）
+  - **megaplay.buzz**（含 vidwish.live / megacloud.bloggy.click 镜像，重写为
+    megaplay.buzz）：embed 页 `<title>File N</title>` →
+    `GET https://<host>/stream/getSources?id=N`（X-Requested-With + Referer）
+    → `sources.file` = HLS master + `tracks[]` 字幕
+    - **分片投毒假象**：master/子清单正常，但分片 URL 在 tiktokcdn.com 且带
+      252B PNG 前缀——实测偏移 0xFC 处为真实 MPEG-TS 同步字节 `47 40 00 10`，
+      播放走代理 SegmentStrip（watch.py `_STRIP_BYTES=252`）可播（无需新增例外）
+  - **vidtube.site**（VidPlay server）：同 megaplay 式 `getSources` →
+    `s1.akirax.buzz` / `s1.norami.top` master，分片为 `.jpg` 后缀的原始
+    MPEG-TS（实测 `47 40 11 10`），字幕在 `vidtub.shiora.site` / `1oe.lostproject.club`
+  - **megacloud.blog**：embed HTML 取 48 位 alphanumeric nonce →
+    `GET {origin}/embed-2/v3/e-1/getSources?id=<id>&_k=<nonce>`；加密时尝试
+    公开解密 helper（best effort，失败返回空）
+  - 未知 host：跟随 iframe 至多 2 跳后再识别；仍未知则丢弃该 server
+- **Kiwi Mapper 旁路**（仅作最后兜底）：`GET https://mapper.nekostream.site/
+  api/mal/<mal>/<num>/<timestamp>`（备 `mapper.mewcdn.online`）
+  - 实测返回 `download` 短链（pahe.nekostream.site 点击页，需 JS，**不可编程
+    播放，跳过**）；当返回**短 opaque server code** 时经 `/ajax/server?get=`
+    解析 → HLS（Referer `https://kwik.cx2.mewcdn.online/`）可播（server-code 路径）
+- **流代理白名单新增**（watch.py `_ALLOWED_STREAM_HOSTS`）：`akirax.buzz`
+  （s1.akirax.buzz master/分片）、`shiora.site`（megap.shiora.site master、
+  vidtub.shiora.site 字幕）；`shiora.top` / `norami.top` / `lostproject.club` /
+  `tiktokcdn.com` 已存在
+- **v1 落地范围（本次）**：`search` + `get_detail` + `get_streams`，
+  `external=False`、`supports_search/detail/streams=True`、`language="en"`、
+  `priority=57`（可播备选：AnimeXin 56 之后、Miruro 58 之前）。
+  `tests/test_anikoto_channel.py` 7 例 fixture 测试（含真实结构）。
+- 已知限制：仅英文索引（中文依赖扩展表）；megaplay 分片必须经代理播放
+  （直链给 hls.js 会被 PNG 前缀卡住）；个别 server（如 pahe 短链）不可编程；
+  站点/embed 域名可能轮换（代码已按 host 识别 + 镜像归一化）。
+
 ## 3. 接口契约
 
 备选源**不新增 Pydantic 模型**，直接复用 CHANNEL_ARCHITECTURE.md §3 的
@@ -371,6 +427,10 @@ class ChannelInfo(BaseModel):
    `external=False`、`priority=56`，AnimeStream WP 模板 + Dailymotion HLS；
    curl_cffi `chrome124` 例外（§2.6 已先声明）。
 
+11. ~~AnikotoChannel~~（2026-08-13 落地）：可播 HLS 备选（英文索引），
+   `external=False`、`priority=57`，HiAnime/Zoro 克隆 + megaplay/vidtube 双 CDN；
+   megaplay 分片走代理 SegmentStrip（§2.7 已先声明）。
+
 
 ## 8. 移植声明
 
@@ -385,3 +445,9 @@ class ChannelInfo(BaseModel):
   `~/work/Project/_reference/aniyomi-extensions-archive`（Apache-2.0）：
   `lib-multisrc/animestream` 的 AnimeStream 模板、`src/all/animexin` 扩展、
   `lib/dailymotion-extractor`；本实现为独立实现，仅参考端点/选择器/流程，不复制代码。
+
+- Anikoto 端点/选择器/提取流程参考本地
+  `~/work/Project/_reference/Anivault-Scraper`（`src/scrapers/anikoto.ts` +
+  `src/resolvers/megacloud.ts`，SH0MIK；仓库未声明 License）：当前站点的
+  搜索结果选择器与参考实现不同（`a.name.d-title` 而非 `flw-item`，2026-08-13
+  实测），选择器以实测为准；本实现为独立实现，仅参考端点/选择器/流程，不复制代码。
