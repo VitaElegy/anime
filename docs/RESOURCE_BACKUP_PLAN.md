@@ -354,6 +354,56 @@ Anikoto（anikoto.net）是 HiAnime/Zoro 风格克隆（参考
   （直链给 hls.js 会被 PNG 前缀卡住）；个别 server（如 pahe 短链）不可编程；
   站点/embed 域名可能轮换（代码已按 host 识别 + 镜像归一化）。
 
+
+### 2.8 Maccms（AppleCMS）资源站家族速查（落地依据，2026-08-13 实测可播）
+
+AppleCMS 资源站是「直链 HLS + 标准 JSON API」的中文资源站家族：每个站点暴露
+`GET /api.php/provide/vod`，搜索/详情/播放全链路为 JSON + 直链 m3u8，主域无
+Cloudflare。实测（Clash 7892 代理）**搜索/详情/播放全通且分片可播**的成员：
+`360zy.com`、`bfzyapi.com`、`api.ffzyapi.com`、`ikunzyapi.com`、`jisuzy.com`、
+`yhzy.cc`、`subozy.com`。参考实现为 Miru 扩展仓库（MIT）：
+`~/work/Project/_reference/repo/repo/{360zy.com,ikunzy.com,yhzy.cc}.js`。
+
+- 搜索：`GET https://<domain>/api.php/provide/vod?ac=detail&wd=<kw>&pg=<n>`
+  - 返回 `{ list: [ { vod_id, vod_name, vod_pic, vod_remarks, vod_year,
+    vod_content, vod_en, ... } ] }`；`wd` 直接支持中文关键词（无需扩展表）
+- 详情+集数：`GET ...?ac=detail&ids=<vod_id>` → `list[0]`
+  - 集数在 `vod_play_url` 字段，格式：
+    `第01集$https://cdn/.../index.m3u8#第02集$https://cdn/.../index.m3u8`
+    （`$` 分隔集名与 URL，`#` 分隔多集；集 URL 即 HLS master 直链）
+- 播放：master/子清单/分片均为普通 m3u8 + MPEG-TS（实测分片 `47 40` magic），
+  经 `/api/watch/proxy/stream` 转发即可；请求需带 `Referer: https://<主域>/`
+- **实测可播 CDN 清单**（watch.py `_ALLOWED_STREAM_HOSTS` 已加）：
+  - 360资源：`vod1.maowushi.com`（master/分片，360zy.com）
+  - iKun资源：`bfikuncdn.com`（ikunzyapi.com）
+  - 樱花资源：`vod12.wgslsw.com` / `ts1.yhzybf.com`（yhzy.cc）
+- **AES-128 加密 HLS（2026-08-13 实测补充）**：360资源部分剧集（如「葬送的
+  芙莉莲 第二季」）子清单带 `#EXT-X-KEY:METHOD=AES-128,URI=".../key.key"`，
+  分片为密文（非裸 TS）。播放链路不受影响：`rewrite_hls_playlist` 会把 key
+  URI 一并重写为同源代理地址，hls.js 经代理取 16 字节 key（IV 通常为全 0）
+  自动解密。E2E 对两种形态都验证：有 key 则解密后断言 `47 40`，无 key 直接
+  断言 `47 40`。另：共享 HTTP 客户端 8s 读超时对大分片（>400KB）会偶发 502，
+  stream proxy 已放宽为单请求 30s。
+- **镜像域名竞速**：同一站点常有多域名，基类 `MaccmsChannel._api()` 对全部
+  镜像域并发发起请求（单域超时 5s / 总竞速上限 7.5s），**首个成功返回**，
+  失败镜像自动跳过——复刻 Miru 扩展的 `Promise.any` 行为，单镜像挂掉不拖垮
+  渠道
+- **落地实例**（`app/services/channels/maccms.py`，`priority=59`，
+  `language="zh"`，均 `supports_search/detail/streams=True`、`external=False`）：
+  - `Ziyuan360Channel`（360zy）：域名 `360zy.com / 360zy.net / 360zy.tv`
+  - `IKunChannel`（ikunzy）：域名 `ikunzyapi.com / ikunzy.com / ikunzy.net /
+    ikunzy.org / ikunzy.vip`
+  - `YinghuaChannel`（yhzy）：域名 `yhzy.cc`
+- **测试**：`tests/test_maccms_channel.py` 11 例 fixture 测试（搜索解析 / 镜像
+  竞速回退 / 全挂告警 / 详情集数解析 / 流解析 / 代理白名单 / 注册状态）
+- **实测排除（2026-08-13）**：girigiri爱动漫（ani.girigirilove.com）详情/播放
+  可播但**搜索被站点屏蔽**（返回「暂无」，suggest/ajax 超时）→ 不落地；
+  次元城 cyc 403、vdm8 超时、dm530w Coming Soon、xfani 域名停放、nyadm 变成
+  夸克网盘页 → 全部不可用
+- 已知限制：站点域名/镜像会轮换，`domains` 元组需随实测更新；个别镜像域
+  HTTP/证书不稳定（竞速已覆盖）；`jisuzy / bfzyapi / subozy` 已验证但未注册，
+  如需更多中文源可在 registry 里按同一基类一行注册
+
 ## 3. 接口契约
 
 备选源**不新增 Pydantic 模型**，直接复用 CHANNEL_ARCHITECTURE.md §3 的

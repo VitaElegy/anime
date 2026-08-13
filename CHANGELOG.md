@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Maccms（AppleCMS）资源站家族直链 HLS 备份渠道（docs/RESOURCE_BACKUP_PLAN.md
+  §2.8）：标准 JSON API `GET /api.php/provide/vod`，中文关键词直搜、详情集数
+  直出、HLS master 直链；**镜像域名并发竞速**（单域 5s / 总 7.5s，首个成功
+  返回），单镜像挂掉不拖垮渠道。落地 360资源（360zy）/ iKun资源（ikunzy）/
+  樱花资源（yhzy），`priority=59`、`language=zh`，2026-08-13 实测搜索/详情/
+  播放/分片全链路可播（maowushi / bfikuncdn / wgslsw+yhzybf CDN，TS `47 40`
+  magic）。11 例 fixture 测试（backend 201 -> 212）。
 - Miruro playable HLS backup channel (docs/RESOURCE_BACKUP_PLAN.md §2.5): AniList
   GraphQL search + Miruro `/api/secure/pipe` episodes/streams (pewe ->
   hls.anidb.app HLS, verified 2026-08-13), `priority=58`, curl_cffi Chrome TLS

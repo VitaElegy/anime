@@ -15,7 +15,7 @@
 ## ✨ 功能特性
 
 - 🔍 **多源聚合搜索**：Nyaa / SubsPlease / Mikan / AnimeGarden 四源并行，中文关键词优先（`asyncio.gather` + 去重排序）；Bangumi / AniList / Bilibili 元数据检索
-- ▶️ **在线观看渠道**：Anilibria / Gogoanime 聚合搜索（AGE / Libvio / Zzzfun 实测失效已禁用，恢复后可随时开启），详情页一键点播（渠道卡片 → 集数 → hls.js 直播）；SSRF 防护代理 + HLS 广告段过滤；**备选资源库**（AnimeHeaven 可播 mp4 / Kitsu 中文元数据 / AllAnime GraphQL 目录 / Shikimori 元数据，均走统一 ChannelProvider 契约）
+- ▶️ **在线观看渠道**：Anilibria / Gogoanime 聚合搜索（AGE / Libvio / Zzzfun 实测失效已禁用，恢复后可随时开启），详情页一键点播（渠道卡片 → 集数 → hls.js 直播）；SSRF 防护代理 + HLS 广告段过滤；**备选资源库**（AnimeHeaven 可播 mp4 / Anikoto / Miruro 可播 HLS / **Maccms 中文直链 HLS：360资源 / iKun资源 / 樱花资源** / Kitsu 中文元数据 / AllAnime GraphQL 目录 / Shikimori 元数据，均走统一 ChannelProvider 契约，详见 docs/RESOURCE_BACKUP_PLAN.md）
 - ⬇️ **种子下载**：通过 qBittorrent WebUI API 下发任务，支持批量、暂停/恢复、进度查询
 - 🎞️ **高清播放管线**：HLS ABR 三档码率（1080p / 720p / 480p）、硬件编码自动检测（NVENC / QSV / AMF / VideoToolbox）、HEVC MKV 4K 适配、HTTP Range 流式播放
 - 👥 **多人同看**：SSE 房间实时同步（播放 / 暂停 / seek / 倍速）、自定义控制条、聊天、好友、私信、房间邀请
