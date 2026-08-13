@@ -63,11 +63,21 @@ _ALLOWED_STREAM_HOSTS = (
     "norami.top",
     "lostproject.club",
     # Maccms 资源站家族直链 HLS CDN（360资源 maowushi / iKun bfikuncdn /
-    # 樱花资源 wgslsw + yhzybf 分片域；suffix match 覆盖子域）
+    # 樱花资源 wgslsw + yhzybf 分片域；极速 jisuzyv+jisuts /
+    # 速播 xluuss+xlzyd+subokk（subokk 为速播当前 master 域，分片仍在 xlzyd）/
+    # 暴风+非凡 rrcdnbf5+baofeng9+ffzy-plays；suffix match 覆盖子域）
     "maowushi.com",
     "bfikuncdn.com",
     "wgslsw.com",
     "yhzybf.com",
+    "jisuzyv.com",
+    "jisuts.com",
+    "xluuss.com",
+    "xlzyd.com",
+    "subokk.com",
+    "rrcdnbf5.com",
+    "baofeng9.com",
+    "ffzy-plays.com",
     # Gogoanime segment CDNs (real MPEG-TS disguised as .jpg/.html/...)
     "trycloud.pro",
     "watching.onl",
@@ -94,8 +104,20 @@ def _host_allowed(url: str) -> bool:
     return any(host == suffix or host.endswith(f".{suffix}") for suffix in suffixes)
 
 
-#: Dailymotion host suffixes. Its CDN requires a Chrome TLS fingerprint
-#: (curl_cffi chrome124); the shared httpx client gets 403 (docs §2.6).
+#: Host suffixes whose CDN requires a Chrome TLS fingerprint (curl_cffi
+#: chrome124); the shared httpx client gets 403/404 on them (docs §2.6/§2.8).
+#: Dailymotion additionally requires a dailymotion.com Referer; the Maccms
+#: CDNs (rrcdnbf5 / baofeng9 / ffzy-plays) accept the channel's own Referer.
+_CHROME_FP_HOST_MARKERS = (
+    "dailymotion.com",
+    "dmcdn.net",
+    "rrcdnbf5.com",
+    "baofeng9.com",
+    "ffzy-plays.com",
+)
+
+#: Dailymotion host suffixes (subset of _CHROME_FP_HOST_MARKERS that also
+#: demands the DM origin Referer — docs §2.6).
 _DM_HOST_MARKERS = ("dailymotion.com", "dmcdn.net")
 
 
@@ -103,6 +125,13 @@ def _is_dailymotion_host(url: str) -> bool:
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower()
     return any(host == marker or host.endswith(f".{marker}") for marker in _DM_HOST_MARKERS)
+
+
+def _is_chrome_fp_host(url: str) -> bool:
+    """True when the CDN rejects the shared httpx client (needs chrome124)."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    return any(host == marker or host.endswith(f".{marker}") for marker in _CHROME_FP_HOST_MARKERS)
 
 
 #: Host markers of megaplay's obfuscated segments. The server serves real
@@ -213,20 +242,29 @@ def _stream_response(
     return Response(content=body, status_code=upstream.status_code, media_type=content_type, headers=out_headers)
 
 
-async def _fetch_dailymotion(url: str, referer: str, ua: str, range_header: str | None):
-    """Fetch a Dailymotion HLS resource via curl_cffi chrome124 (§2.6 exception).
+async def _fetch_chrome_fp(
+    url: str,
+    referer: str,
+    ua: str,
+    range_header: str | None,
+    force_referer: str | None = None,
+):
+    """Fetch an HLS resource whose CDN needs a Chrome TLS fingerprint (§2.6/§2.8).
 
-    Dailymotion's CDN requires BOTH the curl_cffi Chrome 124 TLS fingerprint
-    and a dailymotion.com Referer (verified 2026-08-13: shared httpx gets 403,
-    chrome124 + non-DM referer gets 403, chrome124 + DM referer gets 200). The
-    caller's referer is intentionally ignored for DM hosts — it may be the
-    embedding site (e.g. animexin.dev) which the CDN rejects.
+    These CDNs reject the shared httpx client (403/404) and only accept
+    curl_cffi chrome124. Dailymotion additionally requires a dailymotion.com
+    Referer (verified 2026-08-13); its caller's referer may be the embedding
+    site (e.g. animexin.dev) which the CDN rejects, so callers pass
+    ``force_referer`` for DM. The Maccms CDNs (rrcdnbf5 / baofeng9 /
+    ffzy-plays, verified 2026-08-13) accept the channel's own Referer, which
+    flows through ``referer`` unchanged.
     """
     headers: dict[str, str] = {
-        "Referer": "https://www.dailymotion.com/",
-        "Origin": "https://www.dailymotion.com",
+        "Referer": force_referer or referer or f"https://{urlparse(url).hostname or ''}/",
         "User-Agent": ua or channel_http.DEFAULT_UA,
     }
+    if force_referer or _is_dailymotion_host(url):
+        headers["Origin"] = "https://www.dailymotion.com"
     if range_header:
         headers["Range"] = range_header
     kwargs: dict = {
@@ -234,7 +272,12 @@ async def _fetch_dailymotion(url: str, referer: str, ua: str, range_header: str 
         "timeout": 20.0,
         "headers": headers,
     }
-    if settings.HTTP_PROXY:
+    # DM's CDN is only reachable via the proxy. The Maccms chrome-fp CDNs
+    # (rrcdnbf5 / baofeng9 / ffzy-plays) REGION-DENY the Clash exit and only
+    # accept a direct connection from a CN residential/ISP IP (verified
+    # 2026-08-13: direct chrome124 200, via proxy 403/404), so they bypass
+    # the proxy on purpose (docs §2.8).
+    if settings.HTTP_PROXY and _is_dailymotion_host(url):
         kwargs["proxies"] = {"http": settings.HTTP_PROXY, "https": settings.HTTP_PROXY}
     try:
         async with CurlAsyncSession(**kwargs) as client:
@@ -259,8 +302,13 @@ async def proxy_stream(
     strip_prefix = _should_strip_prefix(url)
     range_header = request.headers.get("range")
 
-    if _is_dailymotion_host(url):
-        upstream = await _fetch_dailymotion(url, referer, ua, None if strip_prefix else range_header)
+    if _is_chrome_fp_host(url):
+        # DM must force the dailymotion.com Referer; Maccms CDNs keep the
+        # channel's own Referer passed by the caller.
+        force_referer = "https://www.dailymotion.com/" if _is_dailymotion_host(url) else None
+        upstream = await _fetch_chrome_fp(
+            url, referer, ua, None if strip_prefix else range_header, force_referer
+        )
         return _stream_response(upstream, url, referer, ua, range_header, strip_prefix)
 
     headers: dict[str, str] = {}

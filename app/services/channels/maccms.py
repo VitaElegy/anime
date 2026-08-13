@@ -61,6 +61,11 @@ class MaccmsChannel(ChannelProvider):
     #: mirror API hosts tried in parallel; first success wins (docs §2.8)
     domains: tuple[str, ...] = ()
 
+    #: AppleCMS play-source hint. Miru extensions request the direct-m3u8
+    #: source explicitly (e.g. ``from=jsm3u8``) so ``vod_play_url`` only
+    #: carries m3u8 URLs instead of player-page links (docs §2.8).
+    api_from: str | None = None
+
     #: per-request timeout for one mirror (docs §2.8: Miru uses 4-5s)
     _MIRROR_TIMEOUT = 5.0
     #: overall cap for the whole mirror race (registry search cap is 8s)
@@ -76,6 +81,8 @@ class MaccmsChannel(ChannelProvider):
         if not self.domains:
             raise ChannelError(self.id, stage, "no mirror domains configured", retryable=False)
 
+        if self.api_from:
+            params = {**params, "from": self.api_from}
         query = urlencode(params)
         pending = {
             asyncio.create_task(
@@ -151,33 +158,71 @@ class MaccmsChannel(ChannelProvider):
             )
         return out
 
+    @staticmethod
+    def _is_direct_media(url: str) -> bool:
+        """True for a directly playable media URL (m3u8/mp4), not a player page."""
+        return bool(re.search(r"\.(m3u8|mp4)(?:[?#]|$)", url.lower()))
+
+    def _parse_play_sources(
+        self, vod_play_url: str, remarks: str = ""
+    ) -> list[list[ChannelEpisode]]:
+        """Split ``vod_play_url`` into per-source episode lists.
+
+        AppleCMS packs multiple play sources into one string separated by
+        ``$$$`` (e.g. ``jsyun$$$jsm3u8``). Miru extensions request the direct
+        source via ``from=`` so the API normally returns one m3u8 source, but
+        without that hint the first source may be player-page links
+        (``/play/<id>``, an HTML page — not programmable). We therefore drop
+        non-direct sources whenever at least one source carries real m3u8/mp4
+        URLs; player pages are kept only as a last-resort fallback.
+        """
+        sources: list[list[ChannelEpisode]] = []
+        for chunk in (vod_play_url or "").split("$$$"):
+            episodes: list[ChannelEpisode] = []
+            for piece in chunk.split("#"):
+                piece = piece.strip()
+                if "$" not in piece:
+                    continue
+                name, url = piece.split("$", 1)
+                url = url.strip()
+                if not url.startswith(("http://", "https://")):
+                    continue
+                episodes.append(
+                    ChannelEpisode(
+                        title=name.strip(),
+                        episode_ref=url,
+                        extra={"remarks": remarks} if remarks else {},
+                    )
+                )
+            if episodes:
+                sources.append(episodes)
+        direct = [eps for eps in sources if any(self._is_direct_media(e.episode_ref) for e in eps)]
+        if direct:
+            sources = direct
+        return sources
+
     async def get_detail(self, detail_ref: str) -> ChannelDetail:
         payload = await self._api("detail", {"ac": "detail", "ids": detail_ref})
         items = payload.get("list") or []
         if not items:
             raise ChannelError(self.id, "detail", "empty vod list", retryable=False)
         item = items[0]
+        remarks = str(item.get("vod_remarks") or "")
 
-        episodes: list[ChannelEpisode] = []
-        for chunk in (str(item.get("vod_play_url") or "")).split("#"):
-            chunk = chunk.strip()
-            if "$" not in chunk:
-                continue
-            name, url = chunk.split("$", 1)
-            url = url.strip()
-            if not url.startswith(("http://", "https://")):
-                continue
-            episodes.append(
-                ChannelEpisode(
-                    title=name.strip(),
-                    episode_ref=url,
-                    extra={"remarks": str(item.get("vod_remarks") or "")},
-                )
-            )
+        sources = self._parse_play_sources(str(item.get("vod_play_url") or ""), remarks)
+        source_names = [name for name in (str(item.get("vod_play_from") or "")).split("$$$") if name]
 
         groups: list[ChannelEpisodeGroup] = []
-        if episodes:
-            groups.append(ChannelEpisodeGroup(title="线路", episodes=episodes))
+        for index, episodes in enumerate(sources):
+            # Single direct source keeps the neutral "线路" label (backwards
+            # compatible); multiple sources get their AppleCMS source names.
+            if len(sources) == 1:
+                title = "线路"
+            elif index < len(source_names) and source_names[index]:
+                title = source_names[index]
+            else:
+                title = f"线路{index + 1}"
+            groups.append(ChannelEpisodeGroup(title=title, episodes=episodes))
 
         return ChannelDetail(
             channel=self.id,
@@ -230,4 +275,59 @@ class YinghuaChannel(MaccmsChannel):
     name = "樱花资源"
     description = "AppleCMS 直链 HLS 资源站（樱花资源）"
     domains = ("yhzy.cc",)
+    priority = 59
+
+
+class JisuChannel(MaccmsChannel):
+    """极速资源 — jisuzy.com family (verified playable 2026-08-13, vv.jisuzyv CDN).
+
+    Miru extension requests ``from=jsm3u8`` so the API returns only the direct
+    m3u8 source (the default ``jsyun`` source is a player page).
+    """
+
+    id = "jisuzy"
+    name = "极速资源"
+    description = "AppleCMS 直链 HLS 资源站（极速资源）"
+    domains = ("jszyapi.com", "jisuzy.com")
+    api_from = "jsm3u8"
+    priority = 59
+
+
+class SuboChannel(MaccmsChannel):
+    """速播资源 — subozy.com family (verified playable 2026-08-13, xluuss CDN)."""
+
+    id = "subozy"
+    name = "速播资源"
+    description = "AppleCMS 直链 HLS 资源站（速播资源）"
+    domains = ("subocaiji.com", "subozy.com", "suboziyuan.com", "suboziyuan.net")
+    api_from = "subm3u8"
+    priority = 59
+
+
+class BaofengChannel(MaccmsChannel):
+    """暴风资源 — bfzyapi.com (verified playable 2026-08-13, rrcdnbf5/baofeng9 CDN).
+
+    The CDN requires a Chrome TLS fingerprint (curl_cffi chrome124); the
+    stream proxy routes these hosts through the fingerprint path (§2.8).
+    """
+
+    id = "bfzyapi"
+    name = "暴风资源"
+    description = "AppleCMS 直链 HLS 资源站（暴风资源）"
+    domains = ("bfzyapi.com",)
+    api_from = "bfzym3u8"
+    priority = 59
+
+
+class FeifanChannel(MaccmsChannel):
+    """非凡资源 — ffzy.tv family (verified playable 2026-08-13, ffzy-plays CDN).
+
+    Same Chrome-fingerprint CDN requirement as 暴风资源 (§2.8).
+    """
+
+    id = "ffzy"
+    name = "非凡资源"
+    description = "AppleCMS 直链 HLS 资源站（非凡资源）"
+    domains = ("ffzy.tv", "ffzy1.tv", "ffzy2.tv", "ffzy3.tv", "ffzy4.tv", "ffzy5.tv")
+    api_from = "ffm3u8"
     priority = 59

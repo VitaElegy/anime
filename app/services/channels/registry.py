@@ -26,7 +26,15 @@ from app.services.channels.fixture import FixtureChannel
 from app.services.channels.gogoanime import GogoanimeChannel
 from app.services.channels.kitsu import KitsuChannel
 from app.services.channels.libvio import LibvioChannel
-from app.services.channels.maccms import IKunChannel, YinghuaChannel, Ziyuan360Channel
+from app.services.channels.maccms import (
+    BaofengChannel,
+    FeifanChannel,
+    IKunChannel,
+    JisuChannel,
+    SuboChannel,
+    YinghuaChannel,
+    Ziyuan360Channel,
+)
 from app.services.channels.miruro import MiruroChannel
 from app.services.channels.shikimori import ShikimoriChannel
 from app.services.channels.zzzfun import ZzzfunChannel
@@ -288,6 +296,10 @@ else:
             Ziyuan360Channel(),
             IKunChannel(),
             YinghuaChannel(),
+            JisuChannel(),
+            SuboChannel(),
+            BaofengChannel(),
+            FeifanChannel(),
             AnimeXinChannel(),
             AllAnimeChannel(),
             ShikimoriChannel(),
