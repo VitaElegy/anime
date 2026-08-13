@@ -15,6 +15,7 @@ from app.models import ChannelDetail, ChannelInfo, ChannelSearchResult, ChannelS
 from app.services import response_cache
 from app.services.channels.age import AgeChannel
 from app.services.channels.anilibria import AnilibriaChannel
+from app.services.channels.animeheaven import AnimeHeavenChannel
 from app.services.channels.base import ChannelError, ChannelProvider
 from app.services.channels.bilibili_channel import BilibiliChannel
 from app.services.channels.gogoanime import GogoanimeChannel
@@ -242,6 +243,7 @@ registry.register_all(
         LibvioChannel(),
         ZzzfunChannel(),
         AnilibriaChannel(),
+        AnimeHeavenChannel(),
         GogoanimeChannel(),
         BilibiliChannel(),
         KitsuChannel(),

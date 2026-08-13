@@ -39,6 +39,8 @@ _ALLOWED_STREAM_HOSTS = (
     # Anilibria (direct HLS, no proxy needed)
     "anilibria.top",
     "cache.libria.fun",
+    # AnimeHeaven direct mp4 CDN (ct./ck. subdomains covered by the suffix match)
+    "animeheaven.me",
     # Gogoanime / megaplay chain
     "gogoanime.is",
     "gogoanime.me.uk",
