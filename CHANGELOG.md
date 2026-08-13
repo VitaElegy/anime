@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Resource backup plan: AnimePahe ruled out as a programmatic stream source
+  (2026-08-13 TLS/browser probe) — `.tv/.net` API is hijacked by an ad-wall
+  (302 -> `ch=1` -> advertiser landing page, never returns JSON even in a real
+  browser), `.com/.org/.ru/.si/.me` are Cloudflare-gated, dead, or domain-for-sale;
+  `_reference/Animepahe-API` is now stale. Recorded in RESOURCE_BACKUP_PLAN §2/§7.
+
 - WatchParty implementation reworked after studying howardchung/watchparty
   (custom controls, zero echo-suppression gates).
 - Search API consolidated into `/api/search/anime` and `/api/search/torrents`.

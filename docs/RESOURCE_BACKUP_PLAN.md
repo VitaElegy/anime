@@ -75,7 +75,7 @@
 | **Shikimori**（shikimori.one/api） | 元数据 + 官方外链 | ✅ 301 → shikimori.io → 200，实测可搜索 | **已落地**（2026-08-13）：search + external，`priority=65`，无中文名（英/俄显示），相关性弱于 Kitsu，仅作第二元数据备选 |
 | **AniAPI**（api.aniapi.com/v1） | 元数据 + 流 | ⚠️ 2026-08-13 起返回 JS 挑战页（JWT redirect），此前 200 | 暂缓：需 JS 能力客户端或 cookie，留作「挑战解除后优先」 |
 | **Jikan**（api.jikan.moe/v4） | 元数据 | ❌ 504（上游 MyAnimeList 拒绝） | 不可用，保留记录 |
-| **AnimePahe**（animepahe.ru/api） | 可播（m3u8+Kwik） | ⚠️ 301 → animepahe.su，Cloudflare 首页 | 需 cloudscraper/CF 绕过（参考 `_reference/Animepahe-API`），P2 |
+| **AnimePahe**（animepahe.tv / .net / .com / .ru / .si） | 可播（m3u8+Kwik） | ❌ 2026-08-13 全域名实测不可编程接入：`.com/.org`→`.pw` 403 CF；`.ru`→`.su` 域名出售页；`.si` NXDOMAIN；`.tv/.net` 存活但 API 302→`ch=1`→广告落地页（p-tracking/thefinancesgator），真实 Chrome 也不返回 JSON；`.me` 403 CF | **确认不可用**：站点已广告墙化，参考实现（`_reference/Animepahe-API`）失效，保留记录避免重复调研 |
 | **AllAnime**（api.mkissa.net/api） | 目录 + 官方外链（可升级为可播） | ✅ GraphQL 实测可用（2026-08-13，0.45s，主番 28 sub/28 dub） | **已落地 v1**（2026-08-13）：search + external，`priority=62`；完整流需 aaReq AES-GCM token + 混淆 bundle 密钥推导（P1，见 §2.4） |
 | **ReAnime.to** | 可播（flixcloud HLS AES-256） | ❌ 2026-08-13 实测 `/api/search` 404、搜索页 SPA 空壳 + Cloudflare challenge（`can_request:false`） | **确认失效**：参考实现（`_reference/ReAnime.to-API`，2026-06）已失效，保留记录避免重复调研 |
 | **HiAnime / Zoro** | 可播 | ❌ 走代理超时（000） | 不可用，保留记录 |
@@ -242,7 +242,9 @@ class ChannelInfo(BaseModel):
    `external=True`，`priority=65`（英/俄显示，无中文；相关性弱于 Kitsu，仅备用）。
 4. ~~AllAnime v1~~（已落地 2026-08-13）：GraphQL search + external，
    `priority=62`；完整可播（aaReq token + 密钥推导）留 P1（§2.4）。
-5. AnimePahe 可播源（P2）：cloudscraper 绕过 CF，需引入依赖并评估稳定性。
+5. ~~AnimePahe~~（已确认不可用 2026-08-13）：`.tv/.net` 存活但 API 被广告墙劫持
+   （302 → `ch=1` → 广告落地页，真实浏览器也不返回 JSON），其余域名失效/CF，
+   参考实现失效，保留记录不再投入。
 6. ~~ReAnime.to~~（已确认失效 2026-08-13）：`/api/search` 404 + SPA 空壳
    + Cloudflare challenge，参考实现已失效，保留记录不再投入。
 7. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。

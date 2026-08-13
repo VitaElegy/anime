@@ -69,7 +69,7 @@ Reserved fields to enable:
 - [x] AnimeHeaven playable mp4 backup (priority=55, verified 2026-08-13)
 - [x] AllAnime v1: GraphQL search + external watch page (priority=62,
       verified 2026-08-13 via api.mkissa.net)
-- [ ] AnimePahe playable source (cloudscraper CF bypass, ref Animepahe-API)
+- [x] ~~AnimePahe~~ ruled out 2026-08-13: live domains are ad-walled (API 302 -> ch=1 -> advertiser landing page; even a real browser gets no JSON), the rest are Cloudflare-gated or domain-for-sale; reference impl dead — kept as record
 - [x] ~~ReAnime.to~~ confirmed dead 2026-08-13 (/api/search 404, SPA shell,
       Cloudflare challenge) — kept as a record in RESOURCE_BACKUP_PLAN §2
 - [ ] AniAPI after its JS challenge is removed (was 200, now JS-challenged)
