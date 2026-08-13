@@ -84,11 +84,19 @@ export default function ChannelPlayer({ title, streams, onClose, onRetry }: Chan
             markError('当前浏览器不支持 HLS 播放')
             return
           }
+          // 中文 Maccms CDN（jisuzy/subozy 等）分片大且慢（单分片 ~2MB、数秒级），
+          // 默认 20s 分片超时在慢网络下会误判超时导致偶发卡死，调大超时与重试。
           const hls = new Hls({
             enableWorker: true,
             lowLatencyMode: true,
             backBufferLength: 60,
             maxBufferLength: 30,
+            manifestLoadingTimeOut: 30_000,
+            manifestLoadingMaxRetry: 4,
+            levelLoadingTimeOut: 30_000,
+            levelLoadingMaxRetry: 8,
+            fragLoadingTimeOut: 60_000,
+            fragLoadingMaxRetry: 8,
           })
           hlsRef.current = hls
           hls.loadSource(sourceUrl)
