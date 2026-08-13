@@ -9,7 +9,7 @@
 |---|---|
 | 技术栈 | FastAPI + SQLite / React 19 + Vite + TS + Tailwind |
 | 功能 | 搜索（中文化、4 源聚合）、qBittorrent 下载、HLS ABR 转码、同看（SSE + 好友/私信/邀请）、账号体系、日历/收藏/爬取 |
-| 后端测试 | 155 passed（.venv-test 实测） |
+| 后端测试 | 163 passed（.venv-test 实测） |
 | 前端测试 | 13/13 passed（4 个测试文件，vitest） |
 | Git | 工作区干净，本地与远程 master 同步（2026-08-13） |
 | 远程分支 | `master` + `feature/watch-party`（12 提交未合入，与本地实现重复） |

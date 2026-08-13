@@ -76,7 +76,8 @@
 | **AniAPI**（api.aniapi.com/v1） | 元数据 + 流 | ⚠️ 2026-08-13 起返回 JS 挑战页（JWT redirect），此前 200 | 暂缓：需 JS 能力客户端或 cookie，留作「挑战解除后优先」 |
 | **Jikan**（api.jikan.moe/v4） | 元数据 | ❌ 504（上游 MyAnimeList 拒绝） | 不可用，保留记录 |
 | **AnimePahe**（animepahe.ru/api） | 可播（m3u8+Kwik） | ⚠️ 301 → animepahe.su，Cloudflare 首页 | 需 cloudscraper/CF 绕过（参考 `_reference/Animepahe-API`），P2 |
-| **ReAnime.to** | 可播（flixcloud HLS AES-256） | 参考实现存在（`_reference/ReAnime.to-API`） | P2：AES 解密链路已在参考项目验证，移植成本高 |
+| **AllAnime**（api.mkissa.net/api） | 目录 + 官方外链（可升级为可播） | ✅ GraphQL 实测可用（2026-08-13，0.45s，主番 28 sub/28 dub） | **已落地 v1**（2026-08-13）：search + external，`priority=62`；完整流需 aaReq AES-GCM token + 混淆 bundle 密钥推导（P1，见 §2.4） |
+| **ReAnime.to** | 可播（flixcloud HLS AES-256） | ❌ 2026-08-13 实测 `/api/search` 404、搜索页 SPA 空壳 + Cloudflare challenge（`can_request:false`） | **确认失效**：参考实现（`_reference/ReAnime.to-API`，2026-06）已失效，保留记录避免重复调研 |
 | **HiAnime / Zoro** | 可播 | ❌ 走代理超时（000） | 不可用，保留记录 |
 | **Consumet 官方** | 聚合流 API | ❌ 官方不再直接提供（301/500） | 可参考其 provider 模式（GogoanimeProvider），不自建 |
 | **Nyaa / Mikan / AnimeGarden / SubsPlease** | BT 聚合 | ✅ 已接入现有四源 | 属于下载/聚合，不是在线渠道，不重复实现 |
@@ -144,6 +145,39 @@ Shikimori（shikimori.one）是社区维护的开放动漫数据库，无需鉴�
   `external=True`、`supports_detail=False`、`priority=65`（排在 Kitsu 60 之后）。
 
 
+### 2.4 AllAnime 接口速查（落地依据，2026-08-13 实测可用）
+
+AllAnime（mkissa 镜像）是免费英文动漫目录中最大的之一；GraphQL 端点
+`https://api.mkissa.net/api` 无需鉴权、无 Cloudflare、响应快（~0.5s）。
+原直连 `api.allanime.day` 已死（ani-cli PR #1779 于 2026-07-22 迁移到
+mkissa），`allanime.to` / `allanime.day` 站点本机走代理超时，但 mkissa.to 可达。
+
+- 搜索：`POST https://api.mkissa.net/api`，GraphQL：
+  ```graphql
+  query($search: SearchInput, $limit: Int, $page: Int, $translationType: VaildTranslationTypeEnumType, $countryOrigin: VaildCountryOriginEnumType) {
+    shows(search: $search, limit: $limit, page: $page, translationType: $translationType, countryOrigin: $countryOrigin) {
+      edges { _id name englishName availableEpisodes __typename }
+    }
+  }
+  ```
+  - 必须带 `Referer: https://mkissa.to` 与 `Origin: https://mkissa.to`
+    （否则镜像可能返回剥离后的空响应）
+  - 返回 `data.shows.edges[]`：`_id`、`name`（罗马音）、`englishName`、
+    `availableEpisodes.sub / .dub / .raw`（集数）
+  - 中文关键词 → `edges: []`（无噪声，无需短路；registry 关键词扩展补拉丁）
+  - 无封面/年份字段；按 sub+dub 集数降序排（主番优先，参考 GoAnime 排序）
+- 官方外链：`https://mkissa.to/anime/{_id}`（SPA 路由，实测 200）
+- **v1 落地范围（2026-08-13）**：`search` + `external_url`，
+  `external=True`、`supports_detail=False`、`priority=62`（排在 Kitsu 60 之后、
+  Shikimori 65 之前）。
+- **P1（完整可播，暂不落地）**：episode 源需 `aaReq` AES-256-GCM 证明 token
+  （payload 绑定 5 分钟窗口 + epoch + 持久化查询 hash），密钥通过抓取
+  mkissa.to 首页 → CDN `entry/app.*.js` → 前 5 个 chunk 中的 64-hex mask 与
+  `partB` 异或推导；源 URL 在 `tobeparsed` AES-256-GCM blob 内。
+  参考 GoAnime `internal/scraper/providers/allanime/`（keys.go / crypto.go /
+  stream.go），前端混淆 + Turnstile，链路脆弱，收益低于 AnimeHeaven，留 P1。
+
+
 ## 3. 接口契约
 
 备选源**不新增 Pydantic 模型**，直接复用 CHANNEL_ARCHITECTURE.md §3 的
@@ -206,11 +240,13 @@ class ChannelInfo(BaseModel):
    `external=True`，`priority=60`。
 3. ~~Shikimori 元数据~~（已落地 2026-08-13）：`search` + `external_url`，
    `external=True`，`priority=65`（英/俄显示，无中文；相关性弱于 Kitsu，仅备用）。
-4. AnimePahe 可播源（P2）：cloudscraper 绕过 CF，需引入依赖并评估稳定性。
-5. ReAnime.to 可播源（P2）：参考实现 AES 解密，移植 + 充分测试。
-6. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。
+4. ~~AllAnime v1~~（已落地 2026-08-13）：GraphQL search + external，
+   `priority=62`；完整可播（aaReq token + 密钥推导）留 P1（§2.4）。
+5. AnimePahe 可播源（P2）：cloudscraper 绕过 CF，需引入依赖并评估稳定性。
+6. ~~ReAnime.to~~（已确认失效 2026-08-13）：`/api/search` 404 + SPA 空壳
+   + Cloudflare challenge，参考实现已失效，保留记录不再投入。
+7. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。
 
-## 8. 移植声明
 ## 8. 移植声明
 
 - AnimeHeaven 端点/选择器参考本地 `~/work/Project/_reference/Anivault-Scraper`

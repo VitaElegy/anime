@@ -6,7 +6,7 @@ along the way so contributors don't re-litigate them.
 ## Current status
 
 - Core (search / download / library / watch party / accounts) is functional.
-- Backend tests: green (155 passed). Frontend tests: green (13 passed, kept
+- Backend tests: green (163 passed). Frontend tests: green (13 passed, kept
   green in CI). Hermetic E2E: green (7 passed / 1 live skipped, Playwright,
   docs/E2E_TESTING.md).
 - Deployment: bare-metal via systemd + Nginx; Docker Compose available for dev.
@@ -67,8 +67,11 @@ Reserved fields to enable:
 - [x] Kitsu v1: search (zh_cn titles) + external official link (priority=60)
 - [x] Shikimori metadata-only backup (search + external link, priority=65)
 - [x] AnimeHeaven playable mp4 backup (priority=55, verified 2026-08-13)
+- [x] AllAnime v1: GraphQL search + external watch page (priority=62,
+      verified 2026-08-13 via api.mkissa.net)
 - [ ] AnimePahe playable source (cloudscraper CF bypass, ref Animepahe-API)
-- [ ] ReAnime.to playable source (flixcloud HLS AES-256, ref ReAnime.to-API)
+- [x] ~~ReAnime.to~~ confirmed dead 2026-08-13 (/api/search 404, SPA shell,
+      Cloudflare challenge) — kept as a record in RESOURCE_BACKUP_PLAN §2
 - [ ] AniAPI after its JS challenge is removed (was 200, now JS-challenged)
 
 ### Engineering

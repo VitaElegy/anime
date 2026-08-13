@@ -43,10 +43,21 @@ async def request(
     headers: dict | None = None,
     params: dict | None = None,
     data: dict | None = None,
+    json_body: dict | None = None,
 ) -> httpx.Response:
-    """Perform one external request and raise ChannelError on transport/HTTP errors."""
+    """Perform one external request and raise ChannelError on transport/HTTP errors.
+
+    Pass either ``data`` (form-encoded) or ``json_body`` (JSON-encoded) — never both.
+    """
     try:
-        resp = await get_client().request(method, url, headers=headers, params=params, data=data)
+        resp = await get_client().request(
+            method,
+            url,
+            headers=headers,
+            params=params,
+            data=data,
+            json=json_body,
+        )
         resp.raise_for_status()
         return resp
     except httpx.HTTPError as exc:
