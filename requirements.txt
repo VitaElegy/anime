@@ -5,3 +5,4 @@ beautifulsoup4>=4.12.0
 feedparser>=6.0.0
 qbittorrent-api>=2024.2
 pydantic-settings>=2.1.0
+curl-cffi>=0.7.0,<0.17  # Miruro pipe (documented exception, docs/RESOURCE_BACKUP_PLAN.md §2.5)
