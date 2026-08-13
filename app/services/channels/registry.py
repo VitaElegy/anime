@@ -36,7 +36,11 @@ STREAM_TTL_SECONDS = 120
 # Keyword expansion bounds (docs §1.2): try at most this many alternatives per
 # provider so a broad expansion cannot explode into N×M upstream requests.
 MAX_ALTERNATIVES = 4
-EXPAND_TIMEOUT_SECONDS = 2.0
+# Final safety net ONLY: offline expansion strategies (title map / local DB)
+# never await, so they return instantly; the sole network layer (Bangumi) is
+# bounded inside keyword_expand.py (2s). This outer cap exists purely to guard
+# against unexpected hangs (e.g. a stuck local DB lock).
+EXPAND_TIMEOUT_SECONDS = 6.0
 
 
 async def _expand_keywords(keyword: str) -> list[str]:

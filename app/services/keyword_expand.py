@@ -7,10 +7,16 @@ from the HTTP layer (docs/CHANNEL_ARCHITECTURE.md §1.2).
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from app.services import bangumi
 from app.services import database as db
+
+#: Bangumi is the ONLY network-dependent expansion strategy; it gets its own
+#: short budget so an unreachable Bangumi can never cancel the instant offline
+#: alternatives (CHINESE_TITLE_MAP / local DB) computed before it.
+BANGUMI_EXPAND_TIMEOUT_SECONDS = 2.0
 
 #: Offline Chinese -> English/Romaji title map. This is the FIRST fallback so
 #: Chinese-first search still reaches English/Romaji-indexed channels (Anilibria,
@@ -142,9 +148,13 @@ async def expand_keywords(keyword: str) -> list[str]:
     except Exception:
         pass
 
-    # Strategy 2: Bangumi search
+    # Strategy 2: Bangumi search — bounded separately (docs §1.2). If Bangumi
+    # hangs, wait_for cancels ONLY this layer; the offline alternatives above
+    # are already computed and returned.
     try:
-        results = await bangumi.search(keyword, limit=3)
+        results = await asyncio.wait_for(
+            bangumi.search(keyword, limit=3), timeout=BANGUMI_EXPAND_TIMEOUT_SECONDS
+        )
         for r in results:
             if r.name:
                 alternatives.add(r.name)
