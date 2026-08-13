@@ -430,6 +430,25 @@ Miru 扩展仓库（MIT）：
   返回 RSS 非 JSON）；`api.ffzyapi.com` 返回非 JSON，非凡资源改用 `ffzy.tv`
   域名族接入
 
+
+### 2.9 二轮实测调研补充（2026-08-13 晚，Clash 7892 代理）
+
+对候选源做了一次批量存活探测（约 30 个域名），更新结论：
+
+| 源 | 2026-08-13 晚实测 | 结论 |
+|---|---|---|
+| reanime.to | 200；**`/api/v1/search`、`/api/v1/anime/{id}` 开放 JSON**；`/api/v1/episodes`、`/api/v1/watch`、`/api/v1/flix` 返回 `401 Unauthorized` | **部分存活**：搜索/元数据可编程，流端点需站点 JS 生成的 auth（参考实现 `/api/*` 已 404，过时）→ P2：可先做 search+external 外链 |
+| anime1.me | 200，WordPress 真实页面（合法广告站） | 存活；但 `?s=` 按日文精确标题才命中，动画列表 TablePress 由 JS 加载 → P2 候选 |
+| yugenanime.tv | 200，页面标题 **"YugenAnime - Goodbye 👋"** | **已关站**（2026-08-13） |
+| aniwave.to / hianime.tv | 200 但仅 1-4KB JS challenge 壳 | 需挑战求解器，暂不投入 |
+| aniwatchtv.to / zoro.to / anix.to / 9anime.se / tenshi.moe / anikai.to / animepahe.si / hianime.to | 000 / NXDOMAIN | 已死 |
+| gogoanime.is / animepahe.com / www3.animeflv.net | 301 跳转 | 存活但需跟进跳转；gogoanime 主站普遍 JS challenge |
+| animeheaven.eu / anime1.me / kitsu.io / anilist.co / nyaa.si / mikanani.me / share.dmhy.org / animetosho.org / animeschedule.net | 200 无挑战 | 可用（AnimeHeaven/Kitsu 已落地） |
+
+结论：**2026-08 存量主力是 Maccms 家族（中文直链）+ AnimeHeaven/Anikoto/
+AnimeXin/Miruro/AllAnime（已落地）**；ReAnime 值得在 P2 阶段接 search+外链，
+anime1.me 作为合法源 P2 候选；AniAPI 与 gogoanime 类需挑战求解器，暂不投入。
+
 ## 3. 接口契约
 
 备选源**不新增 Pydantic 模型**，直接复用 CHANNEL_ARCHITECTURE.md §3 的
@@ -497,8 +516,11 @@ class ChannelInfo(BaseModel):
 5. ~~AnimePahe~~（已确认不可用 2026-08-13）：`.tv/.net` 存活但 API 被广告墙劫持
    （302 → `ch=1` → 广告落地页，真实浏览器也不返回 JSON），其余域名失效/CF，
    参考实现失效，保留记录不再投入。
-6. ~~ReAnime.to~~（已确认失效 2026-08-13）：`/api/search` 404 + SPA 空壳
-   + Cloudflare challenge，参考实现已失效，保留记录不再投入。
+6. ~~ReAnime.to 流播放~~（流端点已确认不可用 2026-08-13）：晚些复测发现
+   `/api/v1/search` 与 `/api/v1/anime/{id}` **开放可用**（搜索/元数据），但
+   `/api/v1/episodes|watch|flix` 均 401（需站点 JS auth），参考实现 `/api/*`
+   已 404 过时（§2.9）。**P2 候选**：接入 search + external 外链（同 Kitsu
+   模式），流播放等 auth 机制破解后再升级。
 7. AniAPI（JS 挑战解除后）：无挑战时按契约接入，优先级高于 AnimePahe。
 8. ~~MiruroChannel~~（已落地 2026-08-13）：可播 HLS 备选，`external=False`、
    `priority=58`，AniList 搜索 + pipe 集数/流，curl_cffi 例外（§2.5 已先声明）。
