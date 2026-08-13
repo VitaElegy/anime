@@ -80,7 +80,7 @@
 | **Miruro**（miruro.tv + AniList GraphQL） | 可播（AniDB HLS，绕 CF） | ✅ 全链路实测可播（2026-08-13，pewe→hls.anidb.app 1080/720/360，分片可播） | **P0 可播备选**：AniList 搜索 + `/api/secure/pipe` 集数/流，需 curl_cffi Chrome 指纹绕 CF（显式例外 §2.5）；已探明 `pewe` 稳定，`ally`（Animedao 上游）已死 |
 | **AnimeKai**（anikai.to） | 可播（enc-dec 解密） | ❌ 2026-05 关站，anikai.to NXDOMAIN（2026-08-13 复测） | **确认关站**：参考实现（`_reference/AnimeKAI-API`）依赖的 enc-dec.app 仍存活但已无站点可查，保留记录避免重复调研 |
 | **ReAnime.to** | 可播（flixcloud HLS AES-256） | ❌ 2026-08-13 实测 `/api/search` 404、搜索页 SPA 空壳 + Cloudflare challenge（`can_request:false`） | **确认失效**：参考实现（`_reference/ReAnime.to-API`，2026-06）已失效，保留记录避免重复调研 |
-| **HiAnime / Zoro** | 可播 | ❌ 走代理超时（000） | 不可用，保留记录 |
+| **HiAnime / Zoro 家族**（hianime.to / hianimez.to / aniwatchtv.to / hianime.sx / hianime.watch / hianime.mx / hianime.bz） | 可播 | ❌ 2026-08-13 全家族复测确认失效：hianime.to 直连超时、hianime.sx 为 ParkLogic 停靠页（permissions-policy 含 `*.parklogic.com`）、aniwatchtv.to 000、hianimez.to 301→hianime.to、hianime.watch 为 459KB SEO 壳站（ajax/search 404）、hianime.mx 为 WordPress 下载站、hianime.bz 000 | **确认失效**：参考 aniwatch-api（ghoshRitesh12）已无可用上游，保留记录避免重复调研；同类可播需求由 Anikoto（§2.7）承接 |
 | **Consumet 官方** | 聚合流 API | ❌ 官方不再直接提供（301/500） | 可参考其 provider 模式（GogoanimeProvider），不自建 |
 | **Nyaa / Mikan / AnimeGarden / SubsPlease** | BT 聚合 | ✅ 已接入现有四源 | 属于下载/聚合，不是在线渠道，不重复实现 |
 | **Bangumi**（api.bgm.tv） | 元数据 | ⚠️ 本机不可达（P0-1 已快速失败兜底） | 元数据主源保持，备选库提供第二来源 |
