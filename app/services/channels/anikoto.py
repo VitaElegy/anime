@@ -146,6 +146,53 @@ def _attr(tag: str, name: str) -> str:
     return m.group(1) if m else ""
 
 
+# ---------------------------------------------------------------------------
+# Search relevance guard (2026-08-13 verified live): anikoto.net's
+# /filter?keyword= is token-based — multi-word phrases return a full page of
+# loosely-related titles (e.g. "sousou no frieren" -> 30 items incl. Overlord
+# / AoT / Hikaru no Go), which pollutes the aggregated Chinese-search UX.
+# We post-filter each result to the query's most distinctive token (longest
+# significant token), so noise never reaches the user (docs
+# RESOURCE_BACKUP_PLAN.md §2.7).
+_QUERY_STOPWORDS = {
+    "a", "an", "the", "of", "no", "to", "and", "or", "in", "de", "la",
+    "season", "part", "movie", "special", "ova", "dub", "sub", "s2", "s3",
+    "s4", "vs", "x", "ii", "iii", "iv",
+}
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _query_tokens(keyword: str) -> list[str]:
+    """Significant lowercase alnum tokens (>=2 chars, stopwords removed)."""
+    return [
+        t
+        for t in _TOKEN_RE.findall(keyword.lower())
+        if len(t) >= 2 and t not in _QUERY_STOPWORDS
+    ]
+
+
+def _relevance_token(keyword: str) -> str:
+    """Most distinctive query token: the longest significant one.
+
+    Multi-word expansions (e.g. "sousou no frieren") keep only the rarest
+    term ("frieren"); single words pass through unchanged. Empty when the
+    keyword is CJK-only or all stopwords (then no filtering is applied).
+    """
+    toks = _query_tokens(keyword)
+    if not toks:
+        return ""
+    return max(toks, key=len)
+
+
+def _is_relevant_result(title: str, title_original: str, keyword: str) -> bool:
+    """True when a parsed result plausibly matches the query keyword."""
+    tok = _relevance_token(keyword)
+    if not tok:
+        return True  # nothing distinctive to match against (e.g. CJK query)
+    hay = " ".join([title, title_original]).lower()
+    return tok in _TOKEN_RE.findall(hay)
+
+
 class AnikotoChannel(ChannelProvider):
     """Anikoto — HiAnime/Zoro-style clone, HLS backup source (EN index)."""
 
@@ -233,6 +280,8 @@ class AnikotoChannel(ChannelProvider):
             jp = _JP_TITLE_RE.search(chunk)
             if jp:
                 title_original = self._text(jp.group(1))
+            if not _is_relevant_result(title, title_original, keyword):
+                continue  # token-based site search noise guard (see above)
 
             out.append(
                 ChannelSearchResult(

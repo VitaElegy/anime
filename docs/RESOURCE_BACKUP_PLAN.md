@@ -303,6 +303,14 @@ Anikoto（anikoto.net）是 HiAnime/Zoro 风格克隆（参考
     `a.name.d-title`（`href`=`/watch/<slug>/ep-N`、`data-jp`=罗马音原名、
     文本=英文名），封面取块内首张 `img[src]`；slug 从 `/watch/<slug>` 提取
   - 实测中文关键词依赖 registry 的中文→英文扩展表（同 AnimeXin §2.6 已知限制）
+  - **搜索相关度守卫（2026-08-13 实测后加）**：该站 `/filter?keyword=` 是
+    分词式搜索——多词短语（如 `sousou no frieren` / `Frieren: Beyond Journey's
+    End`）会返回一整页弱相关条目（30 条含 Overlord / AoT / 棋魂…），中文搜
+    经扩展表产生多个别名后噪音会累积（实测「葬送的芙莉莲」曾把 anikoto 噪音
+    堆到 56 条）。`AnikotoChannel.search()` 现在按**最长有效查询 token**
+    （去停用词：season/part/movie/special/ova/dub/sub 等）对结果做后置过滤：
+    标题或罗马音原名必须包含该 token 才保留（`_is_relevant_result`）。实测
+    「葬送的芙莉莲」anikoto 命中从 56 条降为 3 条精准 Frieren 条目。
 - 详情+集数：`GET https://anikoto.net/watch/<slug>`
   - `<h1 itemprop="name">` 标题（`data-jp`=罗马音原名）、`og:image`/`img[itemprop=image]`
     封面、`.synopsis .content` 简介、`#watch-main[data-id]` 番剧 id
@@ -341,7 +349,7 @@ Anikoto（anikoto.net）是 HiAnime/Zoro 风格克隆（参考
 - **v1 落地范围（本次）**：`search` + `get_detail` + `get_streams`，
   `external=False`、`supports_search/detail/streams=True`、`language="en"`、
   `priority=57`（可播备选：AnimeXin 56 之后、Miruro 58 之前）。
-  `tests/test_anikoto_channel.py` 7 例 fixture 测试（含真实结构）。
+  `tests/test_anikoto_channel.py` 10 例 fixture 测试（含真实结构、搜索相关度守卫）。
 - 已知限制：仅英文索引（中文依赖扩展表）；megaplay 分片必须经代理播放
   （直链给 hls.js 会被 PNG 前缀卡住）；个别 server（如 pahe 短链）不可编程；
   站点/embed 域名可能轮换（代码已按 host 识别 + 镜像归一化）。

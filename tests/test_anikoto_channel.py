@@ -163,11 +163,13 @@ def _json_response(obj) -> _FakeResponse:
 
 class AnikotoChannelTests(unittest.IsolatedAsyncioTestCase):
     async def test_search_parses_real_fixture(self):
+        # Fixture contains Frieren + Solo Leveling; the relevance guard keeps
+        # only the query-matching item (noise filter, §2.7).
         with mock.patch(
             "app.services.channels.http.request", return_value=_FakeResponse(ANIKOTO_SEARCH)
         ) as req:
             hits = await AnikotoChannel().search("Frieren")
-        self.assertEqual(len(hits), 2)
+        self.assertEqual(len(hits), 1)
         first = hits[0]
         self.assertEqual(first.channel, "anikoto")
         self.assertEqual(first.title, "Frieren: Beyond Journey's End")
@@ -177,12 +179,55 @@ class AnikotoChannelTests(unittest.IsolatedAsyncioTestCase):
             first.cover_url,
             "https://cdn.anipixcdn.co/thumbnail/bb6d2babd7797d94d8f4a8600bc9b44e.jpg",
         )
-        second = hits[1]
-        self.assertEqual(second.detail_ref, "solo-leveling-ilh08")
-        self.assertEqual(second.cover_url, f"{BASE}/thumbnail/solo.jpg")
         req.assert_called_once()
         self.assertEqual(req.call_args.args[3], f"{BASE}/filter")
         self.assertEqual(req.call_args.kwargs["params"], {"keyword": "Frieren"})
+
+    async def test_search_keeps_other_title_when_query_matches(self):
+        # Same fixture: a Solo Leveling query must keep Solo Leveling instead.
+        with mock.patch(
+            "app.services.channels.http.request", return_value=_FakeResponse(ANIKOTO_SEARCH)
+        ):
+            hits = await AnikotoChannel().search("Solo Leveling")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].detail_ref, "solo-leveling-ilh08")
+        self.assertEqual(hits[0].cover_url, f"{BASE}/thumbnail/solo.jpg")
+
+    async def test_search_multiword_phrase_filters_noise(self):
+        # Real shape of /filter?keyword=sousou no frieren (trimmed): the site
+        # returns ~30 loosely-related items; only the three Frieren entries
+        # must survive the relevance guard. The fixture's Solo Leveling block
+        # is renamed to an unrelated Overlord title to simulate the noise.
+        noisy = ANIKOTO_SEARCH.replace(
+            "Solo Leveling", "Overlord Movie 2: The Dark Hero"
+        )
+        with mock.patch(
+            "app.services.channels.http.request", return_value=_FakeResponse(noisy)
+        ):
+            hits = await AnikotoChannel().search("sousou no frieren")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].detail_ref, "frieren-beyond-journey-s-end-c6fbj")
+
+    def test_relevance_guard_helpers(self):
+        from app.services.channels.anikoto import (
+            _is_relevant_result,
+            _query_tokens,
+            _relevance_token,
+        )
+
+        self.assertEqual(_query_tokens("Sousou no Frieren"), ["sousou", "frieren"])
+        self.assertEqual(_query_tokens("Frieren: Beyond Journey's End"), ["frieren", "beyond", "journey", "end"])
+        self.assertEqual(_relevance_token("sousou no frieren"), "frieren")
+        self.assertEqual(_relevance_token("solo leveling"), "leveling")
+        self.assertEqual(_relevance_token("葬送的芙莉莲"), "")
+        # stopwords-only query -> no filtering
+        self.assertEqual(_relevance_token("Season 2 OVA"), "")
+        self.assertTrue(_is_relevant_result("Frieren: Beyond Journey's End", "Sousou no Frieren", "sousou no frieren"))
+        self.assertFalse(_is_relevant_result("Overlord Movie 2: The Dark Hero", "Overlord: Fukkatsu no Shi", "sousou no frieren"))
+        self.assertTrue(_is_relevant_result("Solo Leveling", "Ore dake Level Up na Ken", "Solo Leveling"))
+        self.assertFalse(_is_relevant_result("Frieren: Beyond Journey's End", "Sousou no Frieren", "solo leveling"))
+        # CJK-only keyword: nothing distinctive -> keep everything
+        self.assertTrue(_is_relevant_result("Anything", "", "葬送的芙莉莲"))
 
     async def test_search_empty_html_returns_empty(self):
         with mock.patch(
