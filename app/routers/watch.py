@@ -10,6 +10,7 @@ import re
 from urllib.parse import urlencode, urljoin, urlparse
 
 import httpx
+from curl_cffi.requests import AsyncSession as CurlAsyncSession
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 
@@ -85,6 +86,17 @@ def _host_allowed(url: str) -> bool:
     return any(host == suffix or host.endswith(f".{suffix}") for suffix in suffixes)
 
 
+#: Dailymotion host suffixes. Its CDN requires a Chrome TLS fingerprint
+#: (curl_cffi chrome124); the shared httpx client gets 403 (docs §2.6).
+_DM_HOST_MARKERS = ("dailymotion.com", "dmcdn.net")
+
+
+def _is_dailymotion_host(url: str) -> bool:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    return any(host == marker or host.endswith(f".{marker}") for marker in _DM_HOST_MARKERS)
+
+
 #: Host markers of megaplay's obfuscated segments. The server serves real
 #: MPEG-TS payloads wrapped in a short PNG/junk prefix (default 252 bytes);
 #: the official player strips it via newclient.min.js SegmentStrip
@@ -109,6 +121,10 @@ def _should_strip_prefix(url: str) -> bool:
 
 def _build_proxy_url(target: str, referer: str = "", ua: str = "") -> str:
     """Build a same-origin stream-proxy URL for a manifest or segment URI."""
+    # URL fragments (#cell=... Dailymotion cache hints, #t=... player seeks)
+    # are never sent to the upstream server; dropping them keeps the proxied
+    # target byte-identical to what the CDN expects.
+    target = target.split("#", 1)[0]
     params = {"url": target}
     if referer:
         params["referer"] = referer
@@ -158,33 +174,20 @@ async def search_channels(
     return await registry.search(q, page)
 
 
-@router.get("/proxy/stream", summary="Proxy m3u8/segments with channel headers (Range supported)")
-async def proxy_stream(
-    request: Request,
-    url: str = Query(..., description="Absolute http(s) stream URL"),
-    referer: str = Query("", description="Referer header required by the source"),
-    ua: str = Query("", description="User-Agent header required by the source"),
-):
-    if not _host_allowed(url):
-        raise HTTPException(status_code=403, detail="blocked stream host")
+def _stream_response(
+    upstream,
+    url: str,
+    referer: str,
+    ua: str,
+    range_header: str | None,
+    strip_prefix: bool,
+) -> Response:
+    """Turn an upstream response into a proxied stream Response.
 
-    headers: dict[str, str] = {}
-    if referer:
-        headers["Referer"] = referer
-    if ua:
-        headers["User-Agent"] = ua
-    strip_prefix = _should_strip_prefix(url)
-    range_header = request.headers.get("range")
-    if range_header and not strip_prefix:
-        headers["Range"] = range_header
-
-    try:
-        upstream = await channel_http.get_client().get(url, headers=headers)
-        upstream.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.warning("Stream proxy upstream error for %s: %s", url[:80], exc)
-        raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
-
+    ``upstream`` only needs httpx/curl_cffi-compatible ``status_code``,
+    ``headers``, ``content`` and ``text``. HLS manifests are rewritten to
+    same-origin proxy URLs; obfuscated segments get their junk prefix peeled.
+    """
     content_type = upstream.headers.get("content-type") or "application/octet-stream"
     body = upstream.content
     if b"#EXTM3U" in body[:64] or "mpegurl" in content_type.lower():
@@ -200,6 +203,74 @@ async def proxy_stream(
             out_headers["Content-Range"] = content_range
     out_headers["Cache-Control"] = "no-cache"
     return Response(content=body, status_code=upstream.status_code, media_type=content_type, headers=out_headers)
+
+
+async def _fetch_dailymotion(url: str, referer: str, ua: str, range_header: str | None):
+    """Fetch a Dailymotion HLS resource via curl_cffi chrome124 (§2.6 exception).
+
+    Dailymotion's CDN requires BOTH the curl_cffi Chrome 124 TLS fingerprint
+    and a dailymotion.com Referer (verified 2026-08-13: shared httpx gets 403,
+    chrome124 + non-DM referer gets 403, chrome124 + DM referer gets 200). The
+    caller's referer is intentionally ignored for DM hosts — it may be the
+    embedding site (e.g. animexin.dev) which the CDN rejects.
+    """
+    headers: dict[str, str] = {
+        "Referer": "https://www.dailymotion.com/",
+        "Origin": "https://www.dailymotion.com",
+        "User-Agent": ua or channel_http.DEFAULT_UA,
+    }
+    if range_header:
+        headers["Range"] = range_header
+    kwargs: dict = {
+        "impersonate": "chrome124",
+        "timeout": 20.0,
+        "headers": headers,
+    }
+    if settings.HTTP_PROXY:
+        kwargs["proxies"] = {"http": settings.HTTP_PROXY, "https": settings.HTTP_PROXY}
+    try:
+        async with CurlAsyncSession(**kwargs) as client:
+            upstream = await client.get(url)
+            upstream.raise_for_status()
+        return upstream
+    except Exception as exc:
+        logger.warning("Dailymotion proxy upstream error for %s: %s", url[:80], exc)
+        raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
+
+
+@router.get("/proxy/stream", summary="Proxy m3u8/segments with channel headers (Range supported)")
+async def proxy_stream(
+    request: Request,
+    url: str = Query(..., description="Absolute http(s) stream URL"),
+    referer: str = Query("", description="Referer header required by the source"),
+    ua: str = Query("", description="User-Agent header required by the source"),
+):
+    if not _host_allowed(url):
+        raise HTTPException(status_code=403, detail="blocked stream host")
+
+    strip_prefix = _should_strip_prefix(url)
+    range_header = request.headers.get("range")
+
+    if _is_dailymotion_host(url):
+        upstream = await _fetch_dailymotion(url, referer, ua, None if strip_prefix else range_header)
+        return _stream_response(upstream, url, referer, ua, range_header, strip_prefix)
+
+    headers: dict[str, str] = {}
+    if referer:
+        headers["Referer"] = referer
+    if ua:
+        headers["User-Agent"] = ua
+    if range_header and not strip_prefix:
+        headers["Range"] = range_header
+
+    try:
+        upstream = await channel_http.get_client().get(url, headers=headers)
+        upstream.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("Stream proxy upstream error for %s: %s", url[:80], exc)
+        raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
+
+    return _stream_response(upstream, url, referer, ua, range_header, strip_prefix)
 
 
 @router.get("/{channel}/external", summary="Official external URL for external channels")

@@ -269,6 +269,12 @@ WordPress 站，使用 AnimeStream 模板（参考 `aniyomi-extensions-archive` 
     DM CDN 以 403 拒绝**，chrome124/safari 实测 200）+ Clash 7892 代理
     （系统 curl/LibreSSL 直连握手 SSL_ERROR_SYSCALL，curl_cffi 稳定）
   - 流请求头：`Referer: https://www.dailymotion.com/` + `Origin: ...`
+  - **流代理对 DM 域名同样走 curl_cffi**：`/api/watch/proxy/stream` 命中
+    `dailymotion.com` / `dmcdn.net` 时，上游用 `CurlAsyncSession(impersonate=
+    "chrome124")` + Clash 7892，且 **Referer 固定为 DM Origin、忽略调用方
+    referer**（2026-08-13 实测：chrome124 + DM Referer → 200，chrome124 +
+    animexin Referer → 403，httpx → 403）；master/子清单里的 `#cell=<cache>`
+    片段在拼代理 URL 时剥离，绝不转发给上游；非 DM 域名仍走共享 httpx
   - 这是 CHANNEL_ARCHITECTURE §1.1「Provider 不自建 HTTP 客户端」的
     **文档先声明例外**（同 §2.5 Miruro）；AnimeXin 站点请求本身仍走共享 httpx
   - **超时例外**：详情/集数/embed 页 300–750KB，共享 httpx 8s 不够；

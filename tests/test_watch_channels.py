@@ -421,6 +421,17 @@ seg-00000.ts
         self.assertFalse(_should_strip_prefix("not a url"))
 
 
+    def test_proxy_url_strips_url_fragment(self):
+        # Dailymotion child manifests carry #cell=<cache> hints that must never
+        # be forwarded to the CDN upstream (they break segment resolution).
+        from app.routers.watch import _build_proxy_url
+
+        proxied = _build_proxy_url("https://vod-abc.dmcdn.net/video/x/index.m3u8#cell=cf3")
+        self.assertIn("url=https%3A%2F%2Fvod-abc.dmcdn.net%2Fvideo%2Fx%2Findex.m3u8", proxied)
+        self.assertNotIn("cell", proxied)
+        self.assertNotIn("#", proxied)
+
+
 class RegistryTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.expand_patch = mock.patch(
@@ -923,6 +934,92 @@ class ChannelCacheTests(_TempDBCacheTestCase):
         self.assertEqual(len(first), 1)
         self.assertEqual(len(second), 1)
         self.assertEqual(first[0].url, second[0].url)
+
+
+class DailymotionProxyTests(unittest.TestCase):
+    """Stream proxy must route Dailymotion HLS through curl_cffi (chrome124).
+
+    DM's CDN 403s the shared httpx TLS fingerprint (verified 2026-08-13), so
+    the proxy uses curl_cffi + Referer/Origin and strips #cell fragments.
+    """
+
+    class FakeCurlSession:
+        instances: list[DailymotionProxyTests.FakeCurlSession] = []
+
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            type(self).instances.append(self)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url):
+            self.url = url
+            master = (
+                "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000,RESOLUTION=1280x720\n"
+                "https://vod-abc.dmcdn.net/video/x/720.m3u8#cell=cf3\n"
+                "#EXT-X-STREAM-INF:BANDWIDTH=2560000,RESOLUTION=1920x1080\n"
+                "https://vod-abc.dmcdn.net/video/x/1080.m3u8#cell=cf3\n"
+            )
+            return FakeResponse(text=master, status_code=200, headers={"content-type": "application/vnd.apple.mpegurl"})
+
+    def test_dailymotion_master_rewritten_through_curl_cffi(self):
+        client = TestClient(app)
+        with mock.patch("app.routers.watch.CurlAsyncSession", self.FakeCurlSession):
+            resp = client.get(
+                "/api/watch/proxy/stream",
+                params={"url": "https://www.dailymotion.com/cdn/manifest/video/x/master.m3u8", "referer": "https://www.dailymotion.com/video/x"},
+            )
+        client.close()
+        self.assertEqual(resp.status_code, 200)
+        body = resp.text
+        # Every DM child manifest rewritten to a same-origin proxy URL...
+        self.assertIn("/api/watch/proxy/stream?url=https%3A%2F%2Fvod-abc.dmcdn.net%2Fvideo%2Fx%2F720.m3u8", body)
+        self.assertIn("/api/watch/proxy/stream?url=https%3A%2F%2Fvod-abc.dmcdn.net%2Fvideo%2Fx%2F1080.m3u8", body)
+        # ...and the #cell cache hint is stripped, never sent upstream.
+        self.assertNotIn("cell", body)
+        self.assertNotIn("%23", body)
+
+    def test_dailymotion_upstream_gets_origin_referer_and_proxy(self):
+        client = TestClient(app)
+        with mock.patch("app.routers.watch.CurlAsyncSession", self.FakeCurlSession):
+            resp = client.get(
+                "/api/watch/proxy/stream",
+                params={"url": "https://geo.dailymotion.com/player/x/master.m3u8", "referer": "https://animexin.dev/anime/supreme-god-emperor/"},
+            )
+        client.close()
+        self.assertEqual(resp.status_code, 200)
+        session = self.FakeCurlSession.instances[-1]
+        headers = session.kwargs["headers"]
+        self.assertEqual(headers["Origin"], "https://www.dailymotion.com")
+        # DM's CDN 403s non-Dailymotion Referers (verified 2026-08-13), so the
+        # embedding site's referer is normalized to the DM origin.
+        self.assertEqual(headers["Referer"], "https://www.dailymotion.com/")
+        self.assertIn("User-Agent", headers)
+        # curl_cffi chrome124 impersonation + 20s timeout used for DM.
+        self.assertEqual(session.kwargs["impersonate"], "chrome124")
+        self.assertEqual(session.kwargs["timeout"], 20.0)
+        # DM upstream fetch itself is fragment-free.
+        self.assertEqual(session.url, "https://geo.dailymotion.com/player/x/master.m3u8")
+
+    def test_non_dailymotion_host_never_touches_curl_cffi(self):
+        class FakeClient:
+            async def get(self, url, headers=None):
+                self.url = url
+                self.received_headers = headers or {}
+                return FakeResponse(text="seg", status_code=200, headers={"content-type": "video/mp2t"})
+
+        fake_client = FakeClient()
+        curl_cffi = mock.Mock()
+        with mock.patch("app.services.channels.http.get_client", return_value=fake_client), mock.patch("app.routers.watch.CurlAsyncSession", curl_cffi):
+            client = TestClient(app)
+            resp = client.get("/api/watch/proxy/stream", params={"url": "https://megap.norami.top/abc/seg-1.ts"})
+            client.close()
+        self.assertEqual(resp.status_code, 200)
+        curl_cffi.assert_not_called()
 
 
 if __name__ == "__main__":

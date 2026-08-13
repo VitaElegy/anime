@@ -231,9 +231,14 @@ class AnimeXinChannel(ChannelProvider):
                 num = int(em.group(2))
             except ValueError:
                 continue
-            if (num, href) in seen:
+            abs_href = self._abs(href)
+            # Skip malformed anchors (e.g. a trailing <li> whose <a> points at
+            # the site root instead of an episode page — seen on SGE ep 630).
+            if abs_href.rstrip("/") == BASE or href in ("", "#"):
                 continue
-            seen.add((num, href))
+            if (num, abs_href) in seen:
+                continue
+            seen.add((num, abs_href))
             ep_title = f"第{num}集"
             et = _EP_TITLE_RE.search(em.group(0))
             if et:
@@ -245,7 +250,7 @@ class AnimeXinChannel(ChannelProvider):
                     num,
                     ChannelEpisode(
                         title=ep_title,
-                        episode_ref=self._abs(href),
+                        episode_ref=abs_href,
                         extra={"number": num},
                     ),
                 )
