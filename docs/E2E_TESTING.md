@@ -46,7 +46,13 @@ npx playwright install chromium   # 首次：浏览器内核
 npx playwright test              # hermetic 全套（7 passed / 1 skipped）
 npx playwright test tests/core-journey.spec.ts   # 只跑核心旅程
 npx playwright test --headed     # 有头模式观察
-ANIME_E2E_LIVE=1 npx playwright test tests/live-sources.spec.ts  # 真实源 smoke
+# 真实源 smoke（live）需要先手动起一个**非 fixture 模式**的后端（:8001）：
+#   ANIME_HTTP_PROXY=http://127.0.0.1:7892 \
+#     python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+# 然后指定 live 后端再跑（注意：playwright 会自动另起 fixture 后端 :8000，
+# 两者互不影响）：
+ANIME_E2E_LIVE=1 ANIME_E2E_LIVE_BACKEND=http://127.0.0.1:8001 \
+  npx playwright test tests/live-sources.spec.ts   # 真实源 smoke
 ```
 
 Playwright 会自动拉起 3 个 webServer：
