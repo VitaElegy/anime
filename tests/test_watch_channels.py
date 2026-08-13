@@ -17,7 +17,7 @@ from unittest import mock
 
 from app.main import app
 from app.models import ChannelDetail, ChannelSearchResult, ChannelStream
-from app.routers.watch import sanitize_hls_playlist
+from app.routers.watch import rewrite_hls_playlist
 from app.services import database as db
 from app.services import response_cache
 from app.services.channels.age import AgeChannel
@@ -33,11 +33,15 @@ from fastapi.testclient import TestClient
 class FakeResponse:
     """Minimal stand-in for httpx.Response used by channel fixtures."""
 
-    def __init__(self, text: str = "", json_data=None, status_code: int = 200, headers=None):
+    def __init__(self, text: str = "", json_data=None, status_code: int = 200, headers=None, content: bytes | None = None):
         self.text = text
         self._json = json_data
         self.status_code = status_code
-        self.content = text.encode("utf-8")
+        if content is not None:
+            self.content = content
+            self.text = content.decode("utf-8", errors="replace")
+        else:
+            self.content = text.encode("utf-8")
         self.headers = headers or {}
 
     def raise_for_status(self):
@@ -361,29 +365,60 @@ class GogoanimeChannelTests(unittest.IsolatedAsyncioTestCase):
 
 
 class HlsSanitizerTests(unittest.TestCase):
-    def test_drops_tiktok_ad_segments_and_keeps_relative(self):
+    BASE = "https://megap.norami.top/abc/def/master.m3u8"
+
+    def test_rewrites_all_uris_through_proxy_keeps_segments(self):
         playlist = """#EXTM3U
 #EXT-X-VERSION:3
 #EXTINF:4.004000,
 https://p19-ad-site-sign-sg.tiktokcdn.com/ad/image?x=1
 #EXTINF:10.0,
-seg-00000.ts
+index-f1-v1-a1.m3u8
 #EXTINF:4.004000,
 https://p16-ad-site-sign-sg.tiktokcdn.com/ad/image?x=2
 #EXTINF:10.0,
 https://p6oaa-d2.trycloud.pro/anime/seg-00001.jpg?mod=1
 """
-        cleaned = sanitize_hls_playlist(playlist)
-        self.assertNotIn("tiktokcdn", cleaned)
-        self.assertIn("seg-00000.ts", cleaned)
-        self.assertIn("trycloud.pro", cleaned)
+        cleaned = rewrite_hls_playlist(playlist, self.BASE, referer="https://megaplay.buzz/")
+        # Nothing is dropped: megaplay "ad" segments are the real MPEG-TS
+        # payloads (PNG-wrapped with a 252-byte prefix the proxy strips).
+        self.assertIn("tiktokcdn", cleaned)
+        # Relative URI resolved against the playlist base and proxied.
+        self.assertIn("/api/watch/proxy/stream?url=https%3A%2F%2Fmegap.norami.top%2Fabc%2Fdef%2Findex-f1-v1-a1.m3u8", cleaned)
+        self.assertIn("referer=https%3A%2F%2Fmegaplay.buzz%2F", cleaned)
+        # Absolute segments (ad-look and regular) both proxied.
+        self.assertIn("url=https%3A%2F%2Fp19-ad-site-sign-sg.tiktokcdn.com%2Fad%2Fimage", cleaned)
+        self.assertIn("url=https%3A%2F%2Fp6oaa-d2.trycloud.pro%2Fanime%2Fseg-00001.jpg", cleaned)
         lines = [ln for ln in cleaned.splitlines() if ln.startswith("#EXTINF")]
-        self.assertEqual(len(lines), 2)
+        self.assertEqual(len(lines), 4)
+        # Every non-comment line became a same-origin proxy URL.
+        for ln in cleaned.splitlines():
+            if ln.strip() and not ln.startswith("#"):
+                self.assertTrue(ln.startswith("/api/watch/proxy/stream?"), ln)
 
-    def test_keeps_non_hls_passthrough(self):
-        # sanitize is only applied to m3u8 bodies by the router; the helper itself
-        # is line-based and harmless for non-HLS text.
-        self.assertEqual(sanitize_hls_playlist("hello\nworld"), "hello\nworld")
+    def test_rewrites_uri_tags_keeps_iframe(self):
+        playlist = """#EXTM3U
+#EXT-X-KEY:METHOD=AES-128,URI="key.bin"
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=53136,RESOLUTION=640x360,URI="iframes-f3-v1-a1.m3u8"
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1,URI="https://p19-ad-site-sign-sg.tiktokcdn.com/x"
+seg-00000.ts
+"""
+        cleaned = rewrite_hls_playlist(playlist, self.BASE)
+        self.assertIn('URI="/api/watch/proxy/stream?url=https%3A%2F%2Fmegap.norami.top%2Fabc%2Fdef%2Fkey.bin"', cleaned)
+        self.assertIn("iframes-f3-v1-a1.m3u8", cleaned)
+        # I-FRAME tags are kept (not dropped) and proxied.
+        self.assertIn("tiktokcdn", cleaned)
+        self.assertEqual(cleaned.count("#EXT-X-I-FRAME-STREAM-INF"), 2)
+        self.assertIn("/api/watch/proxy/stream?url=https%3A%2F%2Fmegap.norami.top%2Fabc%2Fdef%2Fseg-00000.ts", cleaned)
+
+    def test_strip_marker_detection(self):
+        from app.routers.watch import _should_strip_prefix
+
+        self.assertTrue(_should_strip_prefix("https://p19-ad-site-sign-sg.tiktokcdn.com/ad/x"))
+        self.assertTrue(_should_strip_prefix("https://p6oaa-d2.trycloud.pro/anime/seg-1.jpg"))
+        self.assertTrue(_should_strip_prefix("https://x.ibyteimg.com/seg"))
+        self.assertFalse(_should_strip_prefix("https://megap.norami.top/abc/master.m3u8"))
+        self.assertFalse(_should_strip_prefix("not a url"))
 
 
 class RegistryTests(unittest.IsolatedAsyncioTestCase):
@@ -562,6 +597,71 @@ class WatchApiTests(unittest.TestCase):
         self.assertEqual(resp.headers.get("content-range"), "bytes 0-2/10")
         self.assertEqual(resp.content, b"seg")
 
+    def test_stream_proxy_rewrites_hls_manifest(self):
+        class FakeClient:
+            async def get(self, url, headers=None):
+                return FakeResponse(
+                    text='#EXTM3U\n#EXTINF:10.0,\nseg-00000.ts',
+                    status_code=200,
+                    headers={"content-type": "application/vnd.apple.mpegurl"},
+                )
+
+        fake_client = FakeClient()
+        with mock.patch("app.services.channels.http.get_client", return_value=fake_client):
+            resp = self.client.get(
+                "/api/watch/proxy/stream",
+                params={"url": "https://cdn.agedm.org/a/master.m3u8"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.text
+        self.assertIn("/api/watch/proxy/stream?url=", body)
+        self.assertIn("https%3A%2F%2Fcdn.agedm.org%2Fa%2Fseg-00000.ts", body)
+        self.assertNotIn("\nseg-00000.ts\n", body)
+
+    def test_stream_proxy_strips_obfuscated_segment_prefix(self):
+        class FakeClient:
+            async def get(self, url, headers=None):
+                self.received_headers = headers or {}
+                return FakeResponse(
+                    content=b"\x89PNG\r\n" + b"\x00" * 246 + b"\x47\x40\x11" + b"\x01\x02\x03",
+                    status_code=200,
+                    headers={"content-type": "image/png"},
+                )
+
+        fake_client = FakeClient()
+        with mock.patch("app.services.channels.http.get_client", return_value=fake_client):
+            resp = self.client.get(
+                "/api/watch/proxy/stream",
+                params={"url": "https://p19-ad-site-sign-sg.tiktokcdn.com/ad/seg-1?x=1"},
+                headers={"Range": "bytes=0-99"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        # 252-byte junk prefix removed; raw MPEG-TS payload returned.
+        self.assertEqual(resp.content, b"\x47\x40\x11\x01\x02\x03")
+        self.assertEqual(resp.headers.get("content-type"), "video/mp2t")
+        # Range is not forwarded upstream for stripped segments.
+        self.assertNotIn("Range", fake_client.received_headers)
+        self.assertNotIn("content-range", resp.headers)
+
+    def test_stream_proxy_keeps_non_stripped_segment_intact(self):
+        class FakeClient:
+            async def get(self, url, headers=None):
+                return FakeResponse(
+                    content=b"\x47\x40\x11\x01\x02\x03",
+                    status_code=200,
+                    headers={"content-type": "video/mp2t"},
+                )
+
+        fake_client = FakeClient()
+        with mock.patch("app.services.channels.http.get_client", return_value=fake_client):
+            resp = self.client.get(
+                "/api/watch/proxy/stream",
+                params={"url": "https://megap.norami.top/abc/seg-1.ts"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, b"\x47\x40\x11\x01\x02\x03")
+        self.assertEqual(resp.headers.get("content-type"), "video/mp2t")
+
     def test_external_channel_returns_official_url(self):
         fake_registry = mock.Mock()
         fake_registry.external_url = mock.Mock(return_value="https://www.bilibili.com/bangumi/play/ss123")
@@ -589,6 +689,22 @@ class _TempDBCacheTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class KeywordExpansionTests(_TempDBCacheTestCase):
+    async def test_static_map_falls_back_when_remote_lookup_is_down(self):
+        from app.services.keyword_expand import expand_keywords
+
+        with mock.patch("app.services.keyword_expand.bangumi.search", side_effect=RuntimeError("offline")):
+            alts = await expand_keywords("孤独摇滚")
+        self.assertIn("孤独摇滚", alts)
+        self.assertIn("BOCCHI THE ROCK!", alts)
+        self.assertIn("Bocchi", alts)
+
+    async def test_static_map_short_query_match(self):
+        from app.services.keyword_expand import expand_keywords
+
+        with mock.patch("app.services.keyword_expand.bangumi.search", side_effect=RuntimeError("offline")):
+            alts = await expand_keywords("海贼王")
+        self.assertIn("One Piece", alts)
+
     async def test_search_expands_keywords_and_dedupes_per_channel(self):
         calls: list[str] = []
 

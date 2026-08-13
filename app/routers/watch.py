@@ -6,7 +6,8 @@ Contract: docs/CHANNEL_ARCHITECTURE.md §4.
 from __future__ import annotations
 
 import logging
-from urllib.parse import urlparse
+import re
+from urllib.parse import urlencode, urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -51,6 +52,11 @@ _ALLOWED_STREAM_HOSTS = (
     # Gogoanime segment CDNs (real MPEG-TS disguised as .jpg/.html/...)
     "trycloud.pro",
     "watching.onl",
+    # Megaplay obfuscated segments: real MPEG-TS served with a 252-byte PNG
+    # prefix (player strips it client-side via newclient.min.js SegmentStrip).
+    "tiktokcdn.com",
+    "ibyteimg.com",
+    "ipstatp.com",
 )
 
 
@@ -62,50 +68,63 @@ def _host_allowed(url: str) -> bool:
     return any(host == suffix or host.endswith(f".{suffix}") for suffix in _ALLOWED_STREAM_HOSTS)
 
 
-#: Hosts whose HLS playlists may contain ad segments (tiktokcdn images).
-#: The proxy rewrites those playlists on the fly so hls.js only sees video.
-_HLS_SANITIZE_HOSTS = (
-    "megap.mikora.top",
-    "ncdn.mewstream.buzz",
-    "megap.akirax.buzz",
-    "shiora.top",
-    "norami.top",
-    "lostproject.club",
-)
+#: Host markers of megaplay's obfuscated segments. The server serves real
+#: MPEG-TS payloads wrapped in a short PNG/junk prefix (default 252 bytes);
+#: the official player strips it via newclient.min.js SegmentStrip
+#: (stripBytes/STRIP_BYTES, default 252). Matches the player's default regex
+#: ``/ibyteimg\.com|tiktokcdn\.com|ipstatp\.com|yoot\.trycloud\.pro/i``.
+_STRIP_HOST_MARKERS = ("tiktokcdn", "ibyteimg", "ipstatp", "trycloud")
 
-#: Host markers of known ad networks inside proxied playlists.
-_AD_HOST_MARKERS = ("tiktokcdn",)
+#: Bytes to drop from the head of obfuscated segment responses.
+_STRIP_BYTES = 252
+
+_URI_TAG_RE = re.compile(r'URI="([^"]+)"')
 
 
-def _needs_hls_sanitize(url: str) -> bool:
-    host = (urlparse(url).hostname or "").lower()
-    return any(host == suffix or host.endswith(f".{suffix}") for suffix in _HLS_SANITIZE_HOSTS)
-
-
-def _is_ad_uri(line: str) -> bool:
-    if not line.startswith(("http://", "https://")):
+def _should_strip_prefix(url: str) -> bool:
+    """True when the response body is a real segment wrapped in a junk prefix."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return False
-    host = (urlparse(line).hostname or "").lower()
-    return any(marker in host for marker in _AD_HOST_MARKERS)
+    host = parsed.hostname.lower()
+    return any(marker in host for marker in _STRIP_HOST_MARKERS)
 
 
-def sanitize_hls_playlist(text: str) -> str:
-    """Drop EXTINF+URI pairs pointing at ad hosts from an HLS playlist.
+def _build_proxy_url(target: str, referer: str = "", ua: str = "") -> str:
+    """Build a same-origin stream-proxy URL for a manifest or segment URI."""
+    params = {"url": target}
+    if referer:
+        params["referer"] = referer
+    if ua:
+        params["ua"] = ua
+    return f"/api/watch/proxy/stream?{urlencode(params)}"
 
-    Some mirror servers (e.g. megap.mikora.top) prepend/interleave tiktokcdn
-    image segments into their variant playlists; hls.js would try to mux them
-    as video and fail. We keep every other line untouched so relative segment
-    URLs and tags survive verbatim.
+
+def rewrite_hls_playlist(text: str, base_url: str, referer: str = "", ua: str = "") -> str:
+    """Normalize a proxied HLS playlist so hls.js can actually play it.
+
+    Every URI (plain lines and ``URI="..."`` attributes) is resolved against
+    the playlist's own base URL and rewritten to a same-origin stream-proxy
+    URL, so relative manifests (e.g. Gogoanime mirrors emit
+    ``index-f1-v1-a1.m3u8``) and obfuscated segment URLs keep flowing through
+    the proxy with the right Referer/UA and no CORS. Nothing is dropped: the
+    "tiktokcdn ad" segments are actually the real MPEG-TS payloads (PNG-wrapped
+    with a 252-byte prefix); the proxy strips that prefix per segment.
     """
     lines = text.splitlines()
     out: list[str] = []
     for line in lines:
-        if _is_ad_uri(line):
-            # Also drop the EXTINF/comment lines that belong to this ad pair.
-            while out and (out[-1].startswith("#EXTINF") or out[-1].startswith("#EXT-X-DISCONTINUITY")):
-                out.pop()
+        if line.startswith("#"):
+            if 'URI="' in line:
+                line = _URI_TAG_RE.sub(
+                    lambda m: f'URI="{_build_proxy_url(urljoin(base_url, m.group(1)), referer, ua)}"',
+                    line,
+                )
+            out.append(line)
             continue
-        out.append(line)
+        if line.strip():
+            abs_uri = urljoin(base_url, line.strip())
+            out.append(_build_proxy_url(abs_uri, referer, ua))
     return "\n".join(out)
 
 
@@ -137,8 +156,9 @@ async def proxy_stream(
         headers["Referer"] = referer
     if ua:
         headers["User-Agent"] = ua
+    strip_prefix = _should_strip_prefix(url)
     range_header = request.headers.get("range")
-    if range_header:
+    if range_header and not strip_prefix:
         headers["Range"] = range_header
 
     try:
@@ -150,10 +170,14 @@ async def proxy_stream(
 
     content_type = upstream.headers.get("content-type") or "application/octet-stream"
     body = upstream.content
-    if _needs_hls_sanitize(url) and (b"#EXTM3U" in body[:64] or "mpegurl" in content_type.lower()):
-        body = sanitize_hls_playlist(upstream.text).encode("utf-8")
+    if b"#EXTM3U" in body[:64] or "mpegurl" in content_type.lower():
+        body = rewrite_hls_playlist(upstream.text, url, referer, ua).encode("utf-8")
+    elif strip_prefix and len(body) > _STRIP_BYTES:
+        # Peel the obfuscation prefix; the remaining payload is raw MPEG-TS.
+        body = body[_STRIP_BYTES:]
+        content_type = "video/mp2t"
     out_headers: dict[str, str] = {}
-    if range_header and upstream.status_code == 206:
+    if range_header and not strip_prefix and upstream.status_code == 206:
         content_range = upstream.headers.get("content-range")
         if content_range:
             out_headers["Content-Range"] = content_range

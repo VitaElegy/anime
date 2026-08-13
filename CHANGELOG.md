@@ -11,9 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Online watch channels: Anilibria (open JSON API + direct HLS, Chinese keyword
   expansion) and Gogoanime (HTML scraping + megaplay HLS) providers with real
   playback, registered in the channel registry (docs/CHANNEL_ARCHITECTURE.md).
-- Stream proxy HLS ad-segment filtering: mirror playlists (megap.mikora.top etc.)
-  are sanitized on the fly so tiktokcdn image segments never reach hls.js.
+- Stream proxy HLS playlist rewriting: every URI is resolved against the
+  playlist base and rewritten to a same-origin proxy URL (fixes relative
+  variant/segment paths on Gogoanime mirrors). Megaplay obfuscated segments
+  ("tiktokcdn" PNG-wrapped payloads) are kept and the proxy strips their
+  252-byte junk prefix so hls.js receives clean MPEG-TS (previous "ad
+  filtering" dropped them and playback produced an empty playlist).
 - 8 new channel parsing / HLS sanitizer tests (backend 100 -> 108).
+- Offline Chinese -> English/Romaji title map as keyword-expansion fallback,
+  so Chinese-first search still reaches English-indexed channels when
+  Bangumi/network lookup is unavailable.
 - Multi-source search: Bangumi / AniList metadata + Nyaa / SubsPlease / Mikan /
   AnimeGarden torrent aggregation (Chinese-first query handling).
 - Bilibili 番剧 metadata integration (search + season detail).
