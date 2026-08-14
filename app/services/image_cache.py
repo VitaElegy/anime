@@ -47,11 +47,14 @@ def is_cached(url: str) -> bool:
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=20,
-            headers={"User-Agent": "NicoTracker/1.0"},
-            follow_redirects=True,
-        )
+        kwargs: dict = {
+            "timeout": 20,
+            "headers": {"User-Agent": "NicoTracker/1.0"},
+            "follow_redirects": True,
+        }
+        if settings.HTTP_PROXY:
+            kwargs["proxy"] = settings.HTTP_PROXY
+        _client = httpx.AsyncClient(**kwargs)
     return _client
 
 

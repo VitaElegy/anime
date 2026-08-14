@@ -4,6 +4,7 @@ import logging
 
 import httpx
 
+from app.config import settings
 from app.services import response_cache
 
 logger = logging.getLogger(__name__)
@@ -14,11 +15,14 @@ _client: httpx.AsyncClient | None = None
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=30,
-            headers={"User-Agent": "NicoTracker/1.0"},
-            follow_redirects=True,
-        )
+        kwargs: dict = {
+            "timeout": 30,
+            "headers": {"User-Agent": "NicoTracker/1.0"},
+            "follow_redirects": True,
+        }
+        if settings.HTTP_PROXY:
+            kwargs["proxy"] = settings.HTTP_PROXY
+        _client = httpx.AsyncClient(**kwargs)
     return _client
 
 

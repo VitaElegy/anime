@@ -50,15 +50,18 @@ _client: httpx.AsyncClient | None = None
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=30,
-            headers={
+        kwargs: dict = {
+            "timeout": 30,
+            "headers": {
                 # Bangumi 官方建议自定义 User-Agent
                 "User-Agent": "NicoTracker/1.0 (https://github.com/) anime-downloader",
                 "Accept": "application/json",
             },
-            follow_redirects=True,
-        )
+            "follow_redirects": True,
+        }
+        if settings.HTTP_PROXY:
+            kwargs["proxy"] = settings.HTTP_PROXY
+        _client = httpx.AsyncClient(**kwargs)
     return _client
 
 

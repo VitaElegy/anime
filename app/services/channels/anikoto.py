@@ -648,7 +648,9 @@ class AnikotoChannel(ChannelProvider):
                             "https://megacloud-api-nine.vercel.app/"
                             f"?encrypted_data={enc}&nonce={nonce}&secret={secret}"
                         )
-                        async with httpx.AsyncClient(timeout=10.0) as client:
+                        from app.config import settings as _settings
+                        _proxy = _settings.HTTP_PROXY or None
+                        async with httpx.AsyncClient(timeout=10.0, proxy=_proxy) as client:
                             dec = await client.get(dec_url)
                             body = dec.text
                         m = re.search(r'"file"\s*:\s*"(.*?)"', body)

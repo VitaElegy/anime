@@ -15,6 +15,10 @@ from app.services import response_cache
 
 logger = logging.getLogger(__name__)
 
+# nyaa.land 会按出口 IP/地区封锁（403）；nyaa.si 是同一套 NyaaV2 前端的镜像站。
+# 搜索/订阅时主站被封则自动降级到镜像。
+NYAA_MIRRORS = ["https://nyaa.si"]
+
 _last_request_time: float = 0
 _lock = asyncio.Lock()
 
@@ -109,66 +113,71 @@ async def _search_html_uncached(
         category: Nyaa category code (1_0=Anime, 1_2=English, 1_3=Non-English, 1_4=Raw).
     """
     await _rate_limit()
-
-    url = f"{settings.NYAA_BASE_URL}/?f={filter_}&c={category}&q={quote(keyword)}&p={page}"
     client = _get_client()
 
-    try:
-        resp = await client.get(url)
-        resp.raise_for_status()
-    except httpx.HTTPError as e:
-        logger.warning("Nyaa HTML request failed: %s — falling back to RSS", e)
-        return await _search_rss_uncached(keyword, category)
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-    items: list[TorrentItem] = []
-
-    table = soup.select_one("table.torrent-list tbody")
-    if not table:
-        logger.warning("No torrent table found on page, trying RSS fallback")
-        return await _search_rss_uncached(keyword, category)
-
-    for row in table.select("tr"):
-        cols = row.select("td")
-        if len(cols) < 8:
+    for base_url in [settings.NYAA_BASE_URL] + NYAA_MIRRORS:
+        url = f"{base_url}/?f={filter_}&c={category}&q={quote(keyword)}&p={page}"
+        try:
+            resp = await client.get(url)
+            if resp.status_code in (403, 429):
+                logger.warning("Nyaa %s blocked (%s), trying mirror", base_url, resp.status_code)
+                continue
+            resp.raise_for_status()
+        except httpx.HTTPError as e:
+            logger.warning("Nyaa HTML request failed (%s): %s — trying mirror", base_url, e)
             continue
 
-        # Column indices: 0=category, 1=name, 2=links, 3=size, 4=date, 5=seeders, 6=leechers, 7=downloads
-        title_link = cols[1].select_one("a:last-of-type")
-        title = title_link.get_text(strip=True) if title_link else ""
-        # Magnet and torrent links
-        magnet = ""
-        torrent_url = ""
-        for a in cols[2].select("a"):
-            href = a.get("href", "")
-            if href.startswith("magnet:"):
-                magnet = href
-            elif href.endswith(".torrent") or "/download/" in href:
-                torrent_url = urljoin(settings.NYAA_BASE_URL, href)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        table = soup.select_one("table.torrent-list tbody")
+        if not table:
+            logger.warning("No torrent table found on %s, trying mirror", base_url)
+            continue
 
-        items.append(
-            TorrentItem(
-                title=title,
-                magnet=magnet,
-                torrent_url=torrent_url,
-                size=_parse_size(cols[3].get_text()),
-                seeders=_parse_int(cols[5].get_text()),
-                leechers=_parse_int(cols[6].get_text()),
-                date=cols[4].get_text(strip=True),
-                source="nyaa",
+        items: list[TorrentItem] = []
+        for row in table.select("tr"):
+            cols = row.select("td")
+            if len(cols) < 8:
+                continue
+
+            # Column indices: 0=category, 1=name, 2=links, 3=size, 4=date, 5=seeders, 6=leechers, 7=downloads
+            title_link = cols[1].select_one("a:last-of-type")
+            title = title_link.get_text(strip=True) if title_link else ""
+            # Magnet and torrent links
+            magnet = ""
+            torrent_url = ""
+            for a in cols[2].select("a"):
+                href = a.get("href", "")
+                if href.startswith("magnet:"):
+                    magnet = href
+                elif href.endswith(".torrent") or "/download/" in href:
+                    torrent_url = urljoin(base_url, href)
+
+            items.append(
+                TorrentItem(
+                    title=title,
+                    magnet=magnet,
+                    torrent_url=torrent_url,
+                    size=_parse_size(cols[3].get_text()),
+                    seeders=_parse_int(cols[5].get_text()),
+                    leechers=_parse_int(cols[6].get_text()),
+                    date=cols[4].get_text(strip=True),
+                    source="nyaa",
+                )
             )
-        )
 
-    # Try to get total from pagination info
-    pagination = soup.select_one("ul.pagination")
-    total = len(items)
-    if pagination:
-        # Rough estimate — Nyaa shows 75 per page
-        last_page_link = pagination.select("a")
-        if last_page_link:
-            total = max(total, len(items))  # can't easily get exact total
+        # Try to get total from pagination info
+        pagination = soup.select_one("ul.pagination")
+        total = len(items)
+        if pagination:
+            # Rough estimate — Nyaa shows 75 per page
+            last_page_link = pagination.select("a")
+            if last_page_link:
+                total = max(total, len(items))  # can't easily get exact total
 
-    return SearchResult(items=items, total=len(items), source="nyaa")
+        return SearchResult(items=items, total=len(items), source="nyaa")
+
+    # 主站与镜像全部失败 -> RSS 兜底
+    return await _search_rss_uncached(keyword, category)
 
 
 async def search_rss(
@@ -201,49 +210,54 @@ async def _search_rss_uncached(
     keyword: str,
     category: str = "1_0",
 ) -> SearchResult:
-    """Search Nyaa via RSS feed (fallback)."""
+    """Search Nyaa via RSS feed (fallback), trying mirrors when blocked."""
     await _rate_limit()
-
-    url = f"{settings.NYAA_BASE_URL}/?page=rss&c={category}&q={quote(keyword)}"
     client = _get_client()
 
-    try:
-        resp = await client.get(url)
-        resp.raise_for_status()
-    except httpx.HTTPError as e:
-        logger.error("Nyaa RSS request also failed: %s", e)
-        return SearchResult(items=[], total=0, source="nyaa")
+    for base_url in [settings.NYAA_BASE_URL] + NYAA_MIRRORS:
+        url = f"{base_url}/?page=rss&c={category}&q={quote(keyword)}"
+        try:
+            resp = await client.get(url)
+            if resp.status_code in (403, 429):
+                logger.warning("Nyaa RSS %s blocked (%s), trying mirror", base_url, resp.status_code)
+                continue
+            resp.raise_for_status()
+        except httpx.HTTPError as e:
+            logger.warning("Nyaa RSS request failed (%s): %s — trying mirror", base_url, e)
+            continue
 
-    feed = feedparser.parse(resp.text)
-    items: list[TorrentItem] = []
+        feed = feedparser.parse(resp.text)
+        items: list[TorrentItem] = []
 
-    for entry in feed.entries:
-        # feedparser fields from nyaa RSS
-        magnet = ""
-        torrent_url = ""
-        for link in getattr(entry, "links", []):
-            href = link.get("href", "")
-            if href.startswith("magnet:"):
-                magnet = href
-            elif href.endswith(".torrent") or "/download/" in href:
-                torrent_url = href
+        for entry in feed.entries:
+            # feedparser fields from nyaa RSS
+            magnet = ""
+            torrent_url = ""
+            for link in getattr(entry, "links", []):
+                href = link.get("href", "")
+                if href.startswith("magnet:"):
+                    magnet = href
+                elif href.endswith(".torrent") or "/download/" in href:
+                    torrent_url = href
 
-        # nyaa RSS uses nyaa:seeders, nyaa:leechers, nyaa:size as namespaced elements
-        seeders = _parse_int(getattr(entry, "nyaa_seeders", "0"))
-        leechers = _parse_int(getattr(entry, "nyaa_leechers", "0"))
-        size = getattr(entry, "nyaa_size", "")
+            # nyaa RSS uses nyaa:seeders, nyaa:leechers, nyaa:size as namespaced elements
+            seeders = _parse_int(getattr(entry, "nyaa_seeders", "0"))
+            leechers = _parse_int(getattr(entry, "nyaa_leechers", "0"))
+            size = getattr(entry, "nyaa_size", "")
 
-        items.append(
-            TorrentItem(
-                title=getattr(entry, "title", ""),
-                magnet=magnet,
-                torrent_url=torrent_url or getattr(entry, "link", ""),
-                size=size,
-                seeders=seeders,
-                leechers=leechers,
-                date=getattr(entry, "published", ""),
-                source="nyaa",
+            items.append(
+                TorrentItem(
+                    title=getattr(entry, "title", ""),
+                    magnet=magnet,
+                    torrent_url=torrent_url or getattr(entry, "link", ""),
+                    size=size,
+                    seeders=seeders,
+                    leechers=leechers,
+                    date=getattr(entry, "published", ""),
+                    source="nyaa",
+                )
             )
-        )
 
-    return SearchResult(items=items, total=len(items), source="nyaa")
+        return SearchResult(items=items, total=len(items), source="nyaa")
+
+    return SearchResult(items=[], total=0, source="nyaa")

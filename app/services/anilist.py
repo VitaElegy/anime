@@ -4,6 +4,7 @@ import logging
 
 import httpx
 
+from app.config import settings
 from app.services import response_cache
 
 logger = logging.getLogger(__name__)
@@ -16,13 +17,16 @@ _client: httpx.AsyncClient | None = None
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=15,
-            headers={
+        kwargs: dict = {
+            "timeout": 15,
+            "headers": {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
-        )
+        }
+        if settings.HTTP_PROXY:
+            kwargs["proxy"] = settings.HTTP_PROXY
+        _client = httpx.AsyncClient(**kwargs)
     return _client
 
 
