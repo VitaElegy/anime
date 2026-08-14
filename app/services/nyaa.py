@@ -15,9 +15,10 @@ from app.services import response_cache
 
 logger = logging.getLogger(__name__)
 
-# nyaa.land 会按出口 IP/地区封锁（403）；nyaa.si 是同一套 NyaaV2 前端的镜像站。
-# 搜索/订阅时主站被封则自动降级到镜像。
-NYAA_MIRRORS = ["https://nyaa.si"]
+# nyaa.land 对数据中心 IP 做 WAF 封锁（实测 HK/SG/TW/JP/US/MY/AU/UK/TR/AR
+# 全部 403，curl_cffi 指纹伪装也无效）；nyaa.si / nyaa.net 是同一套 NyaaV2
+# 前端的镜像站，实测 200。搜索/订阅时主站被封则自动按序降级到镜像。
+NYAA_MIRRORS = ["https://nyaa.si", "https://nyaa.net"]
 
 _last_request_time: float = 0
 _lock = asyncio.Lock()
